@@ -943,11 +943,45 @@
       $("#rest-timer").classList.add("hidden");
     });
 
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("service-worker.js").catch(() => {});
-      });
-    }
+    setupServiceWorker();
+  }
+
+  function setupServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
+
+    window.addEventListener("load", async () => {
+      try {
+        const reg = await navigator.serviceWorker.register("service-worker.js");
+
+        const promptUpdate = (worker) => {
+          worker.postMessage("skipWaiting");
+        };
+
+        if (reg.waiting) promptUpdate(reg.waiting);
+
+        reg.addEventListener("updatefound", () => {
+          const worker = reg.installing;
+          if (!worker) return;
+          worker.addEventListener("statechange", () => {
+            if (worker.state === "installed" && navigator.serviceWorker.controller) {
+              promptUpdate(worker);
+            }
+          });
+        });
+
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") reg.update().catch(() => {});
+        });
+        reg.update().catch(() => {});
+      } catch (e) { /* ignore */ }
+    });
   }
 
   async function bootApp() {
