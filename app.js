@@ -5,13 +5,23 @@
   const ICON_TIMER = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l3 2"></path><path d="M9 2h6"></path></svg>';
 
   const cfg = window.GYMLOG_CONFIG || {};
-  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: window.localStorage,
+      storageKey: "gymlog-auth"
+    }
+  });
 
   let state = { splits: [], sessions: [], protein: [], bodyweight: [], settings: { proteinGoal: 150 } };
   let currentUser = null;
   let currentSplitId = null;
   let currentView = "dashboard";
   let restInterval = null;
+  let trendExpanded = false;
+  let prExpanded = false;
   const debounceTimers = {};
   const VIEW_TITLES = { dashboard: "Dashboard", protein: "Eiweiß", weight: "Gewicht" };
 
@@ -232,7 +242,12 @@
       const btn = document.createElement("button");
       btn.textContent = s.name;
       if (s.id === currentSplitId) btn.classList.add("active");
-      btn.addEventListener("click", () => { currentSplitId = s.id; renderExerciseList(); });
+      btn.addEventListener("click", () => {
+        currentSplitId = s.id;
+        nav.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderExerciseList();
+      });
       nav.appendChild(btn);
     });
     const addBtn = document.createElement("button");
@@ -600,12 +615,16 @@
       heatmap.appendChild(cell);
     }
 
+    const VISIBLE_CAP = 5;
+
     const trendList = $("#trend-list");
     trendList.innerHTML = "";
     if (!trends.length) {
       trendList.innerHTML = `<p class="muted small">Noch nicht genug Daten — trainiere mindestens zweimal dieselbe Übung.</p>`;
     } else {
-      trends.sort((a, b) => (b.trend.dir === "up") - (a.trend.dir === "up")).forEach(({ ex, trend }) => {
+      const sortedTrends = [...trends].sort((a, b) => (b.trend.dir === "up") - (a.trend.dir === "up"));
+      const visibleTrends = trendExpanded ? sortedTrends : sortedTrends.slice(0, VISIBLE_CAP);
+      visibleTrends.forEach(({ ex, trend }) => {
         const list = sessionsForExercise(ex.id);
         const last = topValue(list[list.length - 1].entry, ex.bodyweight);
         const prev = topValue(list[list.length - 2].entry, ex.bodyweight);
@@ -615,6 +634,13 @@
         row.innerHTML = `<span>${ex.name}</span><span class="trend-value">${fmtWeight(prev)} → ${fmtWeight(last)} ${unit} <span>${trend.dir === "up" ? "↑" : trend.dir === "down" ? "↓" : "–"}</span></span>`;
         trendList.appendChild(row);
       });
+      if (sortedTrends.length > VISIBLE_CAP) {
+        const moreBtn = document.createElement("button");
+        moreBtn.className = "ghost-btn small full show-more-btn";
+        moreBtn.textContent = trendExpanded ? "Weniger anzeigen" : `Alle ${sortedTrends.length} anzeigen`;
+        moreBtn.addEventListener("click", () => { trendExpanded = !trendExpanded; renderDashboard(); });
+        trendList.appendChild(moreBtn);
+      }
     }
 
     const prList = $("#pr-list");
@@ -623,16 +649,27 @@
     if (!withData.length) {
       prList.innerHTML = `<p class="muted small">Noch keine Rekorde erfasst.</p>`;
     } else {
-      withData.forEach((ex) => {
+      const prRows = withData.map((ex) => {
         const list = sessionsForExercise(ex.id);
         const values = list.map((l) => ({ date: l.date, v: topValue(l.entry, ex.bodyweight) }));
         const best = values.reduce((a, b) => (b.v > a.v ? b : a));
+        return { ex, best };
+      }).sort((a, b) => (a.best.date < b.best.date ? 1 : -1));
+      const visiblePrs = prExpanded ? prRows : prRows.slice(0, VISIBLE_CAP);
+      visiblePrs.forEach(({ ex, best }) => {
         const unit = ex.bodyweight ? "Wdh" : "kg";
         const row = document.createElement("div");
         row.className = "pr-row";
         row.innerHTML = `<span>${ex.name}</span><span class="pr-badge">${fmtWeight(best.v)} ${unit} · ${best.date}</span>`;
         prList.appendChild(row);
       });
+      if (prRows.length > VISIBLE_CAP) {
+        const moreBtn = document.createElement("button");
+        moreBtn.className = "ghost-btn small full show-more-btn";
+        moreBtn.textContent = prExpanded ? "Weniger anzeigen" : `Alle ${prRows.length} anzeigen`;
+        moreBtn.addEventListener("click", () => { prExpanded = !prExpanded; renderDashboard(); });
+        prList.appendChild(moreBtn);
+      }
     }
 
     const select = $("#volume-exercise-select");
@@ -660,39 +697,80 @@
     return parts.join(" ");
   }
 
-  function drawLineChart(canvas, values) {
+  // Smooth, gradient-filled line chart — minimal App Store Connect–style trend line.
+  function drawSmoothChart(canvas, values) {
     const ctx = canvas.getContext("2d");
-    const w = canvas.width = canvas.clientWidth;
-    const h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    if (values.length < 2) {
-      ctx.fillStyle = "#9a9a96";
-      ctx.font = "12px sans-serif";
-      ctx.fillText("Noch nicht genug Daten", 8, h / 2);
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || canvas.parentElement.clientWidth || 300;
+    const cssH = Number(canvas.getAttribute("height")) || canvas.clientHeight || 90;
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    if (!values || values.length < 2) {
+      ctx.fillStyle = "#b3b3ae";
+      ctx.font = "12.5px -apple-system, sans-serif";
+      ctx.fillText("Noch nicht genug Daten", 4, cssH / 2);
       return;
     }
-    const pad = 10;
+
+    const padX = 4, padTop = 12, padBottom = 8;
     const min = Math.min(...values);
     const max = Math.max(...values);
-    const range = max - min || 1;
-    const stepX = (w - pad * 2) / (values.length - 1);
-    ctx.strokeStyle = "#111111";
-    ctx.lineWidth = 2;
+    const range = (max - min) || 1;
+    const innerH = cssH - padTop - padBottom;
+    const stepX = values.length > 1 ? (cssW - padX * 2) / (values.length - 1) : 0;
+    const pts = values.map((v, i) => ({
+      x: padX + i * stepX,
+      y: padTop + innerH - ((v - min) / range) * innerH
+    }));
+
+    function tracePath() {
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[i], p1 = pts[i + 1];
+        const midX = (p0.x + p1.x) / 2;
+        const midY = (p0.y + p1.y) / 2;
+        ctx.quadraticCurveTo(p0.x, p0.y, midX, midY);
+      }
+      const last = pts[pts.length - 1];
+      ctx.lineTo(last.x, last.y);
+    }
+
+    // gradient fill under the curve
+    const grad = ctx.createLinearGradient(0, padTop, 0, cssH);
+    grad.addColorStop(0, "rgba(17,17,17,0.14)");
+    grad.addColorStop(1, "rgba(17,17,17,0)");
     ctx.beginPath();
-    values.forEach((v, i) => {
-      const x = pad + i * stepX;
-      const y = h - pad - ((v - min) / range) * (h - pad * 2);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
+    tracePath();
+    ctx.lineTo(pts[pts.length - 1].x, cssH);
+    ctx.lineTo(pts[0].x, cssH);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // the line itself
+    ctx.beginPath();
+    tracePath();
+    ctx.strokeStyle = "#111111";
+    ctx.lineWidth = 2.25;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
     ctx.stroke();
+
+    // endpoint marker
+    const lastPt = pts[pts.length - 1];
+    ctx.beginPath();
+    ctx.arc(lastPt.x, lastPt.y, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(17,17,17,0.14)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(lastPt.x, lastPt.y, 3, 0, Math.PI * 2);
     ctx.fillStyle = "#111111";
-    values.forEach((v, i) => {
-      const x = pad + i * stepX;
-      const y = h - pad - ((v - min) / range) * (h - pad * 2);
-      ctx.beginPath();
-      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    });
+    ctx.fill();
   }
 
   function drawVolumeChart(exerciseId) {
@@ -700,7 +778,19 @@
     if (!ex) return;
     const list = sessionsForExercise(exerciseId);
     const values = list.map((l) => topValue(l.entry, ex.bodyweight));
-    drawLineChart($("#volume-chart"), values);
+    const unit = ex.bodyweight ? "Wdh" : "kg";
+    const current = values.length ? values[values.length - 1] : null;
+    $("#volume-current").textContent = current !== null ? fmtWeight(current) : "–";
+    $("#volume-unit").textContent = unit;
+    const trendEl = $("#volume-trend");
+    if (values.length >= 2) {
+      const prev = values[values.length - 2];
+      const delta = current - prev;
+      trendEl.textContent = (delta > 0 ? "↑ " : delta < 0 ? "↓ " : "– ") + fmtWeight(Math.abs(delta)) + " " + unit + " seit letztem Training";
+    } else {
+      trendEl.textContent = "Noch nicht genug Daten für einen Trend";
+    }
+    drawSmoothChart($("#volume-chart"), values);
   }
 
   /* ================= protein ================= */
@@ -757,10 +847,9 @@
     for (let i = 13; i >= 0; i--) {
       const d = daysAgoStr(i);
       const rec = state.protein.find((p) => p.date === d);
-      const sum = rec ? rec.entries.reduce((s, e) => s + e.amount, 0) : 0;
-      last14.push(sum);
+      if (rec) last14.push(rec.entries.reduce((s, e) => s + e.amount, 0));
     }
-    drawLineChart($("#protein-history-chart"), last14);
+    drawSmoothChart($("#protein-history-chart"), last14);
   }
 
   async function addProtein(amount) {
@@ -793,9 +882,11 @@
       const delta = current - prev;
       pill.textContent = (delta > 0 ? "↑ " : delta < 0 ? "↓ " : "– ") + fmtWeight(Math.abs(delta)) + " kg";
       pill.classList.toggle("up", delta !== 0);
+      pill.classList.remove("hidden");
       trendEl.textContent = "seit letztem Eintrag (" + list[list.length - 2].date + ")";
     } else {
       pill.textContent = "";
+      pill.classList.add("hidden");
       trendEl.textContent = list.length ? "Noch zu wenige Einträge für einen Trend" : "Trage dein Gewicht ein, um den Verlauf zu sehen";
     }
 
@@ -805,7 +896,7 @@
       const rec = state.bodyweight.find((w) => w.date === d);
       if (rec) last30.push(rec.value);
     }
-    drawLineChart($("#weight-history-chart"), last30);
+    drawSmoothChart($("#weight-history-chart"), last30);
 
     const logList = $("#weight-log-list");
     logList.innerHTML = "";

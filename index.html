@@ -104,10 +104,12 @@
     <p class="section-label">Persönliche Rekorde</p>
     <div class="card" id="pr-list"></div>
 
-    <p class="section-label">Volumen — Übung wählen</p>
-    <div class="card">
-      <select id="volume-exercise-select"></select>
-      <canvas id="volume-chart" height="90"></canvas>
+    <p class="section-label">Verlauf</p>
+    <div class="card hero-chart-card">
+      <select id="volume-exercise-select" class="hero-select"></select>
+      <p class="hero-num"><span id="volume-current">-</span> <span class="muted small" id="volume-unit">kg</span></p>
+      <p class="muted small" id="volume-trend"></p>
+      <canvas id="volume-chart" height="130"></canvas>
     </div>
   </main>
 
@@ -127,7 +129,7 @@
     </div>
     <p class="section-label">Verlauf</p>
     <div class="card">
-      <canvas id="protein-history-chart" height="90"></canvas>
+      <canvas id="protein-history-chart" height="100"></canvas>
     </div>
     <div class="card" id="protein-log-list"></div>
   </main>
@@ -149,7 +151,7 @@
     </div>
     <p class="section-label">Verlauf (30 Tage)</p>
     <div class="card">
-      <canvas id="weight-history-chart" height="90"></canvas>
+      <canvas id="weight-history-chart" height="100"></canvas>
     </div>
     <p class="section-label">Letzte Einträge</p>
     <div class="card" id="weight-log-list"></div>
