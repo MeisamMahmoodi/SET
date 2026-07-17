@@ -300,13 +300,35 @@
   }
 
   function renderExerciseList() {
-    if (!currentSplitId) return;
+    $("#today-label").textContent = fmtDateLabel(todayStr());
+    const container = $("#exercise-list");
+
+    if (!state.splits.length) {
+      if (currentView === "workout") $("#page-title").textContent = "Training";
+      $("#empty-splits-state").classList.remove("hidden");
+      $("#empty-exercises-state").classList.add("hidden");
+      container.innerHTML = "";
+      $("#add-exercise-btn").classList.add("hidden");
+      $("#repeat-last-btn").classList.add("hidden");
+      return;
+    }
+    $("#empty-splits-state").classList.add("hidden");
+
     const split = getSplit(currentSplitId);
     if (!split) return;
     if (currentView === "workout") $("#page-title").textContent = split.name + " day";
-    $("#today-label").textContent = fmtDateLabel(todayStr());
+    $("#add-exercise-btn").classList.remove("hidden");
+
+    if (!split.exercises.length) {
+      $("#empty-exercises-state").classList.remove("hidden");
+      $("#repeat-last-btn").classList.add("hidden");
+      container.innerHTML = "";
+      return;
+    }
+    $("#empty-exercises-state").classList.add("hidden");
+    $("#repeat-last-btn").classList.remove("hidden");
+
     const session = state.sessions.find((s) => s.splitId === currentSplitId && s.date === todayStr());
-    const container = $("#exercise-list");
     container.innerHTML = "";
 
     split.exercises.forEach((ex) => {
@@ -917,6 +939,7 @@
     $$("#bottom-nav button").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
     $("#add-exercise-btn").addEventListener("click", onAddExercise);
     $("#repeat-last-btn").addEventListener("click", onRepeatLast);
+    $("#empty-add-split-btn").addEventListener("click", onAddSplit);
     $("#menu-btn").addEventListener("click", onMenuClick);
     $$(".quick-add-grid [data-add-protein]").forEach((btn) =>
       btn.addEventListener("click", () => addProtein(parseInt(btn.dataset.addProtein, 10)))
