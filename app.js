@@ -616,35 +616,62 @@
     }
 
     const VISIBLE_CAP = 5;
+    const splitOrder = state.splits.map((s) => s.id);
+    const splitRank = (splitId) => { const i = splitOrder.indexOf(splitId); return i === -1 ? 999 : i; };
 
-    const trendList = $("#trend-list");
-    trendList.innerHTML = "";
-    if (!trends.length) {
-      trendList.innerHTML = `<p class="muted small">Noch nicht genug Daten — trainiere mindestens zweimal dieselbe Übung.</p>`;
-    } else {
-      const sortedTrends = [...trends].sort((a, b) => (b.trend.dir === "up") - (a.trend.dir === "up"));
-      const visibleTrends = trendExpanded ? sortedTrends : sortedTrends.slice(0, VISIBLE_CAP);
-      visibleTrends.forEach(({ ex, trend }) => {
-        const list = sessionsForExercise(ex.id);
-        const last = topValue(list[list.length - 1].entry, ex.bodyweight);
-        const prev = topValue(list[list.length - 2].entry, ex.bodyweight);
-        const unit = ex.bodyweight ? "Wdh" : "kg";
-        const row = document.createElement("div");
-        row.className = "trend-row";
-        row.innerHTML = `<span>${ex.name}</span><span class="trend-value">${fmtWeight(prev)} → ${fmtWeight(last)} ${unit} <span>${trend.dir === "up" ? "↑" : trend.dir === "down" ? "↓" : "–"}</span></span>`;
-        trendList.appendChild(row);
+    // renders a pre-sorted array of rows, inserting a split-name header whenever the split changes
+    function renderGroupedList(container, rows, expanded, cap, getSplitName, buildRowEl, expandLabel, onToggle) {
+      container.innerHTML = "";
+      const visible = expanded ? rows : rows.slice(0, cap);
+      let lastSplit = null;
+      visible.forEach((row) => {
+        const splitName = getSplitName(row);
+        if (splitName !== lastSplit) {
+          const header = document.createElement("div");
+          header.className = "list-group-label";
+          header.textContent = splitName;
+          container.appendChild(header);
+          lastSplit = splitName;
+        }
+        container.appendChild(buildRowEl(row));
       });
-      if (sortedTrends.length > VISIBLE_CAP) {
+      if (rows.length > cap) {
         const moreBtn = document.createElement("button");
         moreBtn.className = "ghost-btn small full show-more-btn";
-        moreBtn.textContent = trendExpanded ? "Weniger anzeigen" : `Alle ${sortedTrends.length} anzeigen`;
-        moreBtn.addEventListener("click", () => { trendExpanded = !trendExpanded; renderDashboard(); });
-        trendList.appendChild(moreBtn);
+        moreBtn.textContent = expanded ? "Weniger anzeigen" : `Alle ${rows.length} anzeigen`;
+        moreBtn.addEventListener("click", onToggle);
+        container.appendChild(moreBtn);
       }
     }
 
+    const trendList = $("#trend-list");
+    if (!trends.length) {
+      trendList.innerHTML = `<p class="muted small">Noch nicht genug Daten — trainiere mindestens zweimal dieselbe Übung.</p>`;
+    } else {
+      const sortedTrends = [...trends].sort((a, b) => {
+        const r = splitRank(a.ex.splitId) - splitRank(b.ex.splitId);
+        if (r !== 0) return r;
+        return (b.trend.dir === "up") - (a.trend.dir === "up");
+      });
+      renderGroupedList(
+        trendList, sortedTrends, trendExpanded, VISIBLE_CAP,
+        (row) => row.ex.splitName,
+        ({ ex, trend }) => {
+          const list = sessionsForExercise(ex.id);
+          const last = topValue(list[list.length - 1].entry, ex.bodyweight);
+          const prev = topValue(list[list.length - 2].entry, ex.bodyweight);
+          const unit = ex.bodyweight ? "Wdh" : "kg";
+          const row = document.createElement("div");
+          row.className = "trend-row";
+          row.innerHTML = `<span>${ex.name}</span><span class="trend-value">${fmtWeight(prev)} → ${fmtWeight(last)} ${unit} <span>${trend.dir === "up" ? "↑" : trend.dir === "down" ? "↓" : "–"}</span></span>`;
+          return row;
+        },
+        null,
+        () => { trendExpanded = !trendExpanded; renderDashboard(); }
+      );
+    }
+
     const prList = $("#pr-list");
-    prList.innerHTML = "";
     const withData = exercises.filter((ex) => sessionsForExercise(ex.id).length > 0);
     if (!withData.length) {
       prList.innerHTML = `<p class="muted small">Noch keine Rekorde erfasst.</p>`;
@@ -654,22 +681,24 @@
         const values = list.map((l) => ({ date: l.date, v: topValue(l.entry, ex.bodyweight) }));
         const best = values.reduce((a, b) => (b.v > a.v ? b : a));
         return { ex, best };
-      }).sort((a, b) => (a.best.date < b.best.date ? 1 : -1));
-      const visiblePrs = prExpanded ? prRows : prRows.slice(0, VISIBLE_CAP);
-      visiblePrs.forEach(({ ex, best }) => {
-        const unit = ex.bodyweight ? "Wdh" : "kg";
-        const row = document.createElement("div");
-        row.className = "pr-row";
-        row.innerHTML = `<span>${ex.name}</span><span class="pr-badge">${fmtWeight(best.v)} ${unit} · ${best.date}</span>`;
-        prList.appendChild(row);
+      }).sort((a, b) => {
+        const r = splitRank(a.ex.splitId) - splitRank(b.ex.splitId);
+        if (r !== 0) return r;
+        return (a.best.date < b.best.date ? 1 : -1);
       });
-      if (prRows.length > VISIBLE_CAP) {
-        const moreBtn = document.createElement("button");
-        moreBtn.className = "ghost-btn small full show-more-btn";
-        moreBtn.textContent = prExpanded ? "Weniger anzeigen" : `Alle ${prRows.length} anzeigen`;
-        moreBtn.addEventListener("click", () => { prExpanded = !prExpanded; renderDashboard(); });
-        prList.appendChild(moreBtn);
-      }
+      renderGroupedList(
+        prList, prRows, prExpanded, VISIBLE_CAP,
+        (row) => row.ex.splitName,
+        ({ ex, best }) => {
+          const unit = ex.bodyweight ? "Wdh" : "kg";
+          const row = document.createElement("div");
+          row.className = "pr-row";
+          row.innerHTML = `<span>${ex.name}</span><span class="pr-badge">${fmtWeight(best.v)} ${unit} · ${best.date}</span>`;
+          return row;
+        },
+        null,
+        () => { prExpanded = !prExpanded; renderDashboard(); }
+      );
     }
 
     const select = $("#volume-exercise-select");
@@ -1094,6 +1123,9 @@
           if (document.visibilityState === "visible") reg.update().catch(() => {});
         });
         reg.update().catch(() => {});
+        // also re-check periodically while the app stays open, so a fresh deploy
+        // is picked up within a minute instead of only on the next full open/close
+        setInterval(() => reg.update().catch(() => {}), 60000);
       } catch (e) { /* ignore */ }
     });
   }

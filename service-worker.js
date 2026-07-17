@@ -1,4 +1,4 @@
-const CACHE = "gymlog-v6";
+const CACHE = "set-v7";
 const ASSETS = [
   "./",
   "./index.html",

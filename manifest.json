@@ -1,6 +1,6 @@
 {
-  "name": "Gymlog",
-  "short_name": "Gymlog",
+  "name": "SET",
+  "short_name": "SET",
   "description": "Trainings- und Eiweiß-Tracker",
   "start_url": "./index.html",
   "scope": "./",
