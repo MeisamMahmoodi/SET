@@ -22,6 +22,7 @@
   let restInterval = null;
   let trendExpanded = false;
   let prExpanded = false;
+  let expandedExerciseId = null;
   const debounceTimers = {};
   const VIEW_TITLES = { dashboard: "Dashboard", protein: "Eiweiß", weight: "Gewicht" };
 
@@ -193,6 +194,10 @@
     );
   }
 
+  function isEntryReal(entry) {
+    return !!(entry && entry.sets && entry.sets.some((s) => s.weight !== null || s.reps !== null));
+  }
+
   function sessionsForExercise(exerciseId) {
     return state.sessions
       .filter((s) => s.exerciseData && s.exerciseData[exerciseId])
@@ -244,6 +249,7 @@
       if (s.id === currentSplitId) btn.classList.add("active");
       btn.addEventListener("click", () => {
         currentSplitId = s.id;
+        expandedExerciseId = null;
         nav.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         renderExerciseList();
@@ -346,19 +352,37 @@
     const session = state.sessions.find((s) => s.splitId === currentSplitId && s.date === todayStr());
     container.innerHTML = "";
 
-    split.exercises.forEach((ex) => {
+    const doneFlags = split.exercises.map((ex) => isEntryReal(session && session.exerciseData[ex.id]));
+    const doneCount = doneFlags.filter(Boolean).length;
+    container.insertAdjacentHTML("beforeend", buildProgressCardHtml(doneCount, split.exercises.length));
+
+    split.exercises.forEach((ex, i) => {
       const entry = session && session.exerciseData[ex.id];
       const sets = (entry && entry.sets && entry.sets.length) ? entry.sets : [{ weight: null, reps: null, note: "" }];
       const trend = trendForExercise(ex.id);
       const last = sessionsForExercise(ex.id).filter((s) => s.date < todayStr()).slice(-1)[0];
       const lastVal = last ? topValue(last.entry, ex.bodyweight) : null;
+      const done = doneFlags[i];
+
+      if (expandedExerciseId !== ex.id) {
+        const todayVal = done ? topValue(entry, ex.bodyweight) : null;
+        const rightText = done
+          ? fmtWeight(todayVal) + (ex.bodyweight ? " Wdh" : " kg") + " ✓"
+          : (lastVal !== null ? "letztes Mal " + fmtWeight(lastVal) + (ex.bodyweight ? " Wdh" : " kg") : "noch keine Daten");
+        const row = document.createElement("div");
+        row.className = "exercise-row card" + (done ? " done" : "");
+        row.dataset.ex = ex.id;
+        row.innerHTML = `<span class="er-name">${ex.name}</span><span class="er-value">${rightText}</span>`;
+        row.addEventListener("click", () => { expandedExerciseId = ex.id; renderExerciseList(); });
+        container.appendChild(row);
+        return;
+      }
 
       const card = document.createElement("div");
       card.className = "exercise-card card";
       card.innerHTML = `
         <div class="exercise-head">
           <div class="name-block">
-            <div class="exercise-icon">${initials(ex.name)}</div>
             <div>
               <div class="exercise-title">${ex.name}</div>
               <div class="exercise-sub">${lastVal !== null ? "letztes Mal " + fmtWeight(lastVal) + (ex.bodyweight ? " Wdh" : " kg") : "noch keine Daten"}</div>
@@ -371,16 +395,31 @@
           </div>
         </div>
         <div class="sets" data-ex-id="${ex.id}" data-bodyweight="${ex.bodyweight}"></div>
-        <button class="ghost-btn small add-set-btn" data-ex="${ex.id}">+ Satz</button>
+        <div class="exercise-card-footer">
+          <button class="ghost-btn small add-set-btn" data-ex="${ex.id}">+ Satz</button>
+          <button class="primary-btn small collapse-ex-btn" data-ex="${ex.id}">Fertig</button>
+        </div>
         <div class="oneRM"></div>
       `;
       const setsWrap = $(".sets", card);
-      sets.forEach((set, i) => setsWrap.appendChild(renderSetRow(ex, i, set, sets.length)));
+      sets.forEach((set, idx) => setsWrap.appendChild(renderSetRow(ex, idx, set, sets.length)));
       updateOneRM(card, ex, sets);
       container.appendChild(card);
     });
 
     bindExerciseListEvents();
+  }
+
+  function buildProgressCardHtml(done, total) {
+    if (!total) return "";
+    const segments = Array.from({ length: total }, (_, i) => `<span class="progress-seg${i < done ? " filled" : ""}"></span>`).join("");
+    const label = done === total ? "Training komplett" : `${done} von ${total} Übungen erledigt`;
+    return `
+      <div class="workout-progress-card">
+        <div class="wp-bar">${segments}</div>
+        <p class="wp-label">${label}</p>
+      </div>
+    `;
   }
 
   function renderSetRow(ex, index, set, total) {
@@ -426,6 +465,7 @@
     $$(".remove-ex-btn").forEach((el) => el.addEventListener("click", onRemoveExercise));
     $$(".mic-btn").forEach((el) => el.addEventListener("click", onMicClick));
     $$(".timer-btn").forEach((el) => el.addEventListener("click", () => startRestTimer(parseInt(el.dataset.timer, 10))));
+    $$(".collapse-ex-btn").forEach((el) => el.addEventListener("click", () => { expandedExerciseId = null; renderExerciseList(); }));
   }
 
   function currentSetsInDom(exId) {
@@ -482,6 +522,7 @@
     const { error } = await sb.from("exercises").update({ archived: true }).eq("id", exId);
     if (error) { showError(error.message); return; }
     split.exercises = split.exercises.filter((x) => x.id !== exId);
+    if (expandedExerciseId === exId) expandedExerciseId = null;
     renderExerciseList();
   }
 
@@ -532,6 +573,7 @@
         .select().single();
       if (error) { showError(error.message); return; }
       split.exercises.push({ id: data.id, name: data.name, bodyweight: data.bodyweight });
+      expandedExerciseId = data.id;
       closeModal();
       renderExerciseList();
     });
