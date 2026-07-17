@@ -727,11 +727,14 @@
   }
 
   // Smooth, gradient-filled line chart — minimal App Store Connect–style trend line.
-  function drawSmoothChart(canvas, values) {
+  // IMPORTANT: cssHeight must be passed in explicitly, not read back from canvas.height/getAttribute("height") —
+  // setting canvas.height (a DOM property) reflects into the "height" attribute, so re-reading it after a draw
+  // would pick up the already-scaled device-pixel value and balloon the canvas taller on every re-render.
+  function drawSmoothChart(canvas, values, cssHeight) {
     const ctx = canvas.getContext("2d");
     const dpr = window.devicePixelRatio || 1;
     const cssW = canvas.clientWidth || canvas.parentElement.clientWidth || 300;
-    const cssH = Number(canvas.getAttribute("height")) || canvas.clientHeight || 90;
+    const cssH = cssHeight || 90;
     canvas.width = cssW * dpr;
     canvas.height = cssH * dpr;
     canvas.style.width = cssW + "px";
@@ -819,7 +822,7 @@
     } else {
       trendEl.textContent = "Noch nicht genug Daten für einen Trend";
     }
-    drawSmoothChart($("#volume-chart"), values);
+    drawSmoothChart($("#volume-chart"), values, 130);
   }
 
   /* ================= protein ================= */
@@ -878,7 +881,7 @@
       const rec = state.protein.find((p) => p.date === d);
       if (rec) last14.push(rec.entries.reduce((s, e) => s + e.amount, 0));
     }
-    drawSmoothChart($("#protein-history-chart"), last14);
+    drawSmoothChart($("#protein-history-chart"), last14, 100);
   }
 
   async function addProtein(amount) {
@@ -925,7 +928,7 @@
       const rec = state.bodyweight.find((w) => w.date === d);
       if (rec) last30.push(rec.value);
     }
-    drawSmoothChart($("#weight-history-chart"), last30);
+    drawSmoothChart($("#weight-history-chart"), last30, 100);
 
     const logList = $("#weight-log-list");
     logList.innerHTML = "";
