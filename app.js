@@ -79,7 +79,8 @@
   function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 
   let currentSplitId = state.splits[0].id;
-  let currentView = "workout";
+  let currentView = "dashboard";
+  const VIEW_TITLES = { dashboard: "Dashboard", protein: "Eiweiß", weight: "Gewicht" };
   let restInterval = null;
 
   /* ================= utils ================= */
@@ -645,7 +646,7 @@
     const ctx = ring.getContext("2d");
     ctx.clearRect(0, 0, 72, 72);
     const pct = Math.max(0, Math.min(1, current / goal));
-    ctx.strokeStyle = "#ececea";
+    ctx.strokeStyle = "#f2f2f0";
     ctx.lineWidth = 6;
     ctx.beginPath();
     ctx.arc(36, 36, 28, 0, Math.PI * 2);
@@ -864,6 +865,8 @@
     });
     $$("#bottom-nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
     $("#split-tabs").classList.toggle("hidden", view !== "workout");
+    if (VIEW_TITLES[view]) $("#page-title").textContent = VIEW_TITLES[view];
+    if (view === "workout") renderExerciseList();
     if (view === "dashboard") renderDashboard();
     if (view === "protein") renderProtein();
     if (view === "weight") renderWeight();
