@@ -217,7 +217,45 @@ html, body {
   display: inline-block; animation: pulse 1.6s infinite;
 }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
-#analysis-text { font-size: 14px; line-height: 1.55; margin: 0; }
+#analysis-text { font-size: 14px; line-height: 1.55; margin: 0 0 12px; }
+
+.overview-stats { display: flex; gap: 16px; flex-wrap: wrap; }
+.overview-stats span { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+.overview-stats .muted { font-weight: 400; letter-spacing: normal; margin-left: 3px; }
+
+.details-toggle-btn {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 13px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.seg-btn {
+  flex: 1;
+  border: none;
+  padding: 9px 0;
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.seg-btn.active { background: var(--text); color: var(--bg); }
 
 .stat-grid {
   display: grid;
@@ -285,6 +323,7 @@ select {
 }
 
 canvas { display: block; width: 100%; }
+#protein-ring { width: 72px; height: 72px; flex-shrink: 0; }
 
 .hero-chart-card { padding-bottom: 6px; }
 .hero-select {
@@ -313,6 +352,7 @@ canvas { display: block; width: 100%; }
   display: flex;
   align-items: center;
   gap: 16px;
+  margin-bottom: 14px;
 }
 .big-num { font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
 
@@ -320,8 +360,9 @@ canvas { display: block; width: 100%; }
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
+.ghost-btn.light { background: var(--inset); margin-bottom: 0; }
 
 .protein-entry {
   display: flex;

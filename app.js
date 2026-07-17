@@ -23,6 +23,7 @@
   let trendExpanded = false;
   let prExpanded = false;
   let expandedExerciseId = null;
+  let dashboardTab = "trend";
   const debounceTimers = {};
   const VIEW_TITLES = { dashboard: "Dashboard", protein: "Eiweiß", weight: "Gewicht" };
 
@@ -626,7 +627,6 @@
     const flat = trends.filter((t) => t.trend.dir === "flat");
 
     $("#stat-up").textContent = up.length;
-    $("#stat-flat").textContent = flat.length;
 
     const last7 = new Set();
     state.sessions.forEach((s) => { if (hasRealData(s) && s.date >= daysAgoStr(6)) last7.add(s.date); });
@@ -883,20 +883,31 @@
     const remaining = goal - current;
     $("#protein-remaining").textContent = remaining > 0 ? `noch ${Math.round(remaining)} g bis zum Ziel` : "Ziel erreicht";
 
+    // fixed 72x72 CSS size, scaled for device pixel ratio so it stays crisp —
+    // ring.width/height are set explicitly every time (never read back), so this can't runaway like the line charts once did
     const ring = $("#protein-ring");
     const ctx = ring.getContext("2d");
-    ctx.clearRect(0, 0, 72, 72);
+    const dpr = window.devicePixelRatio || 1;
+    const size = 72;
+    ring.width = size * dpr;
+    ring.height = size * dpr;
+    ring.style.width = size + "px";
+    ring.style.height = size + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
     const pct = Math.max(0, Math.min(1, current / goal));
     ctx.strokeStyle = "#f2f2f0";
     ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.arc(36, 36, 28, 0, Math.PI * 2);
+    ctx.arc(size / 2, size / 2, 28, 0, Math.PI * 2);
     ctx.stroke();
     ctx.strokeStyle = "#111111";
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.arc(36, 36, 28, -Math.PI / 2, -Math.PI / 2 + pct * Math.PI * 2);
+    ctx.arc(size / 2, size / 2, 28, -Math.PI / 2, -Math.PI / 2 + pct * Math.PI * 2);
     ctx.stroke();
+
+    $("#protein-log-toggle-label").textContent = `${day.entries.length} Eintr${day.entries.length === 1 ? "ag" : "äge"} heute`;
 
     const list = $("#protein-log-list");
     list.innerHTML = "";
@@ -1131,7 +1142,26 @@
       $("#rest-timer").classList.add("hidden");
     });
 
+    $("#details-toggle-btn").addEventListener("click", () => {
+      const section = $("#details-section");
+      const expanded = section.classList.toggle("hidden") === false;
+      $("#details-toggle-label").textContent = expanded ? "Details ausblenden" : "Details anzeigen";
+    });
+    $$("#trend-pr-tabs .seg-btn").forEach((btn) => btn.addEventListener("click", () => setDashboardTab(btn.dataset.tab)));
+    $("#protein-log-toggle-btn").addEventListener("click", () => {
+      const list = $("#protein-log-list");
+      const expanded = list.classList.toggle("hidden") === false;
+      $("#protein-log-toggle-arrow").textContent = expanded ? "ausblenden ‹" : "anzeigen ›";
+    });
+
     setupServiceWorker();
+  }
+
+  function setDashboardTab(tab) {
+    dashboardTab = tab;
+    $$("#trend-pr-tabs .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    $("#trend-list").classList.toggle("hidden", tab !== "trend");
+    $("#pr-list").classList.toggle("hidden", tab !== "pr");
   }
 
   function setupServiceWorker() {

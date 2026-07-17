@@ -62,47 +62,15 @@
   </main>
 
   <main id="view-dashboard" class="view">
-    <div class="card analysis-card">
+    <div class="card overview-card">
       <div class="live-dot"><span></span>Analyse läuft</div>
       <p id="analysis-text">Sammle noch Daten …</p>
-    </div>
-
-    <div class="stat-grid">
-      <div class="card stat-card">
-        <div class="stat-head">↑ Steigerung</div>
-        <p class="stat-num" id="stat-up">0</p>
-        <p class="muted small">Übungen</p>
-      </div>
-      <div class="card stat-card">
-        <div class="stat-head">– Stagnation</div>
-        <p class="stat-num" id="stat-flat">0</p>
-        <p class="muted small">Übungen</p>
+      <div class="overview-stats">
+        <span><b id="stat-up">0</b> <span class="muted small">↑ Übungen</span></span>
+        <span><b id="stat-streak">0</b> <span class="muted small">Streak</span></span>
+        <span><b id="stat-prs">0</b> <span class="muted small">PRs</span></span>
       </div>
     </div>
-
-    <div class="stat-grid">
-      <div class="card stat-card">
-        <div class="stat-head">Streak</div>
-        <p class="stat-num" id="stat-streak">0</p>
-        <p class="muted small">Tage diese Woche</p>
-      </div>
-      <div class="card stat-card">
-        <div class="stat-head">PRs</div>
-        <p class="stat-num" id="stat-prs">0</p>
-        <p class="muted small">diesen Monat</p>
-      </div>
-    </div>
-
-    <p class="section-label">Trainingstage (letzte 4 Wochen)</p>
-    <div class="card">
-      <div id="streak-heatmap" class="heatmap"></div>
-    </div>
-
-    <p class="section-label">Trend je Übung</p>
-    <div class="card" id="trend-list"></div>
-
-    <p class="section-label">Persönliche Rekorde</p>
-    <div class="card" id="pr-list"></div>
 
     <p class="section-label">Verlauf</p>
     <div class="card hero-chart-card">
@@ -111,27 +79,52 @@
       <p class="muted small" id="volume-trend"></p>
       <canvas id="volume-chart" height="130"></canvas>
     </div>
+
+    <button class="details-toggle-btn" id="details-toggle-btn">
+      <span id="details-toggle-label">Details anzeigen</span>
+      <span class="muted small">Trend · Rekorde · Heatmap ›</span>
+    </button>
+
+    <div id="details-section" class="hidden">
+      <p class="section-label">Trainingstage (letzte 4 Wochen)</p>
+      <div class="card">
+        <div id="streak-heatmap" class="heatmap"></div>
+      </div>
+
+      <div class="segmented" id="trend-pr-tabs">
+        <button class="seg-btn active" data-tab="trend">Trend</button>
+        <button class="seg-btn" data-tab="pr">Rekorde</button>
+      </div>
+      <div class="card" id="trend-list"></div>
+      <div class="card hidden" id="pr-list"></div>
+    </div>
   </main>
 
   <main id="view-protein" class="view hidden">
     <p class="section-label">Eiweiß heute</p>
-    <div class="card protein-main">
-      <canvas id="protein-ring" width="72" height="72"></canvas>
-      <div>
-        <p class="big-num"><span id="protein-current">0</span> <span class="muted small">/ <span id="protein-goal">150</span> g</span></p>
-        <p class="muted small" id="protein-remaining"></p>
+    <div class="card">
+      <div class="protein-main">
+        <canvas id="protein-ring" width="72" height="72"></canvas>
+        <div>
+          <p class="big-num"><span id="protein-current">0</span> <span class="muted small">/ <span id="protein-goal">150</span> g</span></p>
+          <p class="muted small" id="protein-remaining"></p>
+        </div>
       </div>
-    </div>
-    <div class="quick-add-grid">
-      <button class="ghost-btn" data-add-protein="20">+20 g</button>
-      <button class="ghost-btn" data-add-protein="30">+30 g</button>
-      <button class="ghost-btn" id="protein-custom-btn">+ eigener Wert</button>
+      <div class="quick-add-grid">
+        <button class="ghost-btn light" data-add-protein="20">+20 g</button>
+        <button class="ghost-btn light" data-add-protein="30">+30 g</button>
+        <button class="ghost-btn light" id="protein-custom-btn">+ eigener Wert</button>
+      </div>
     </div>
     <p class="section-label">Verlauf</p>
     <div class="card">
       <canvas id="protein-history-chart" height="100"></canvas>
     </div>
-    <div class="card" id="protein-log-list"></div>
+    <button class="details-toggle-btn" id="protein-log-toggle-btn">
+      <span id="protein-log-toggle-label">0 Einträge heute</span>
+      <span class="muted small" id="protein-log-toggle-arrow">anzeigen ›</span>
+    </button>
+    <div class="card hidden" id="protein-log-list"></div>
   </main>
 
   <main id="view-weight" class="view hidden">
