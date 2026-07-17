@@ -1,0 +1,333 @@
+* { box-sizing: border-box; }
+
+:root {
+  --bg: #f4f4f2;
+  --surface: #ffffff;
+  --surface-2: #ececea;
+  --line: #e2e2df;
+  --line-strong: #d5d5d1;
+  --text: #111111;
+  --text-secondary: #6b6b68;
+  --text-muted: #9a9a96;
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px 16px 96px;
+  min-height: 100vh;
+}
+
+.hidden { display: none !important; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.topbar h1 { font-size: 19px; font-weight: 500; margin: 2px 0 0; }
+.muted { color: var(--text-secondary); }
+.small { font-size: 12px; }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--surface-2); border: none; color: var(--text);
+  font-size: 16px; cursor: pointer;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+}
+.tabs button {
+  flex: 1;
+  white-space: nowrap;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.tabs button.active {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.card {
+  background: var(--surface);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.section-label {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0 0 8px 2px;
+}
+
+.exercise-card { margin-bottom: 14px; }
+.exercise-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.exercise-head .name-block { display: flex; align-items: center; gap: 10px; }
+.exercise-icon {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+}
+.exercise-title { font-size: 14.5px; font-weight: 500; }
+.exercise-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+.trend-pill {
+  font-size: 11.5px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+.trend-pill.up { background: var(--text); color: var(--bg); }
+
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 0.5px solid var(--line);
+}
+.set-row .idx { width: 16px; font-size: 11.5px; color: var(--text-muted); }
+.set-row input.num {
+  width: 46px;
+  border: none;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 7px 4px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text);
+}
+.set-row input.note {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 7px 8px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.set-row .unit { font-size: 11px; color: var(--text-muted); }
+.set-row button.mic {
+  border: none; background: transparent; font-size: 15px; color: var(--text-secondary);
+  cursor: pointer; padding: 4px;
+}
+.set-row button.del {
+  border: none; background: transparent; font-size: 14px; color: var(--text-muted);
+  cursor: pointer; padding: 4px;
+}
+
+.ghost-btn {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.ghost-btn.full { width: 100%; }
+.ghost-btn.small { padding: 7px; font-size: 12px; }
+.ghost-btn:active { transform: scale(0.98); }
+
+.oneRM {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.analysis-card { }
+.live-dot {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11.5px; color: var(--text-secondary); margin-bottom: 8px;
+}
+.live-dot span {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--text);
+  display: inline-block; animation: pulse 1.6s infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+#analysis-text { font-size: 13.5px; line-height: 1.55; margin: 0; }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.stat-card { margin-bottom: 10px; }
+.stat-head { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.stat-num { font-size: 24px; font-weight: 500; margin: 0; }
+
+.heatmap {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  gap: 4px;
+}
+.heatmap .day {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+.heatmap .day.trained { background: var(--text); }
+
+.trend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-top: 0.5px solid var(--line);
+  font-size: 13.5px;
+}
+.trend-row:first-child { border-top: none; }
+.trend-value { display: flex; align-items: center; gap: 5px; color: var(--text-secondary); font-size: 12.5px; }
+
+.pr-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-top: 0.5px solid var(--line);
+  font-size: 13.5px;
+}
+.pr-row:first-child { border-top: none; }
+.pr-badge { font-size: 11.5px; color: var(--text-muted); }
+
+select {
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.protein-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.big-num { font-size: 22px; font-weight: 500; margin: 0; }
+
+.quick-add-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.protein-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-top: 0.5px solid var(--line);
+  font-size: 13px;
+}
+.protein-entry:first-child { border-top: none; }
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  background: var(--surface);
+  border-top: 0.5px solid var(--line);
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+}
+.bottom-nav button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  padding: 8px 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.bottom-nav button.active { color: var(--text); font-weight: 500; background: var(--surface-2); }
+
+.rest-timer {
+  position: fixed;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  padding: 10px 16px;
+  border-radius: 30px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 50;
+}
+.rest-timer button {
+  border: none; background: transparent; color: var(--bg); font-size: 14px; cursor: pointer;
+}
+
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 100;
+}
+.modal-sheet {
+  background: var(--surface);
+  width: 100%;
+  max-width: 480px;
+  border-radius: 18px 18px 0 0;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+}
+.modal-sheet h3 { font-size: 15px; font-weight: 500; margin: 0 0 12px; }
+.modal-sheet input, .modal-sheet select {
+  width: 100%;
+  padding: 9px 10px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--surface-2);
+  font-size: 13.5px;
+  color: var(--text);
+}
+.modal-actions { display: flex; gap: 8px; margin-top: 4px; }
+.modal-actions button { flex: 1; }
+.primary-btn {
+  background: var(--text); color: var(--bg); border: none; border-radius: var(--radius-sm);
+  padding: 10px; font-size: 13.5px; cursor: pointer;
+}
