@@ -1,9 +1,10 @@
-const CACHE = "gymlog-v3";
+const CACHE = "gymlog-v4";
 const ASSETS = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
+  "./config.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
@@ -25,6 +26,7 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     caches.match(e.request).then((cached) => {
       const network = fetch(e.request)

@@ -1,92 +1,23 @@
 (function () {
   "use strict";
 
-  /* ================= Default data ================= */
-  function defaultData() {
-    return {
-      settings: { proteinGoal: 150 },
-      splits: [
-        { id: "push", name: "Push", exercises: [
-          { id: "push-schraeg", name: "Schrägbank", bodyweight: false },
-          { id: "push-flach", name: "Flachbank", bodyweight: false },
-          { id: "push-schulter", name: "Schulterdrücken", bodyweight: false },
-          { id: "push-butterfly", name: "Butterfly", bodyweight: false },
-          { id: "push-seitheben", name: "Seitheben", bodyweight: false },
-          { id: "push-pushdown", name: "Trizeps Pushdown", bodyweight: false },
-          { id: "push-overhead", name: "Trizeps Overhead", bodyweight: false }
-        ]},
-        { id: "pull", name: "Pull", exercises: [
-          { id: "pull-klimmzuege", name: "Klimmzüge", bodyweight: true },
-          { id: "pull-latziehen", name: "Latziehen eng", bodyweight: false },
-          { id: "pull-breitrudern", name: "Breites Rudern", bodyweight: false },
-          { id: "pull-reverse", name: "Reverse Butterfly", bodyweight: false },
-          { id: "pull-preacher", name: "Preacher Curls", bodyweight: false },
-          { id: "pull-hammer", name: "Hammer Curls Kabel", bodyweight: false }
-        ]},
-        { id: "legs", name: "Legs", exercises: [
-          { id: "legs-presse", name: "Beinpresse", bodyweight: false },
-          { id: "legs-strecker", name: "Beinstrecker", bodyweight: false },
-          { id: "legs-beuger", name: "Beinbeuger", bodyweight: false }
-        ]},
-        { id: "oberkoerper", name: "Oberkörper", exercises: [
-          { id: "ob-schraeg", name: "Schrägbank", bodyweight: false },
-          { id: "ob-klimmzuege", name: "Klimmzüge", bodyweight: true },
-          { id: "ob-brustpresse", name: "Brustpresse", bodyweight: false },
-          { id: "ob-ruderneng", name: "Rudern eng", bodyweight: false },
-          { id: "ob-butterfly", name: "Butterfly", bodyweight: false },
-          { id: "ob-ruderweit", name: "Rudern weit", bodyweight: false }
-        ]},
-        { id: "arme", name: "Arme", exercises: [
-          { id: "arme-schulter", name: "Schulterdrücken", bodyweight: false },
-          { id: "arme-preacher", name: "Preacher Curls", bodyweight: false },
-          { id: "arme-overhead", name: "Trizeps Overhead", bodyweight: false },
-          { id: "arme-hammer", name: "Hammer Curls", bodyweight: false },
-          { id: "arme-pushdown", name: "Trizeps Pushdown", bodyweight: false },
-          { id: "arme-reverse", name: "Reverse Butterfly", bodyweight: false }
-        ]}
-      ],
-      sessions: [],
-      protein: [],
-      bodyweight: []
-    };
-  }
-
   const ICON_MIC = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>';
   const ICON_TIMER = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l3 2"></path><path d="M9 2h6"></path></svg>';
 
-  const STORAGE_KEY = "gymlog-v1";
+  const cfg = window.GYMLOG_CONFIG || {};
+  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
 
-  function loadData() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return defaultData();
-      const parsed = JSON.parse(raw);
-      const base = defaultData();
-      return {
-        settings: Object.assign(base.settings, parsed.settings || {}),
-        splits: Array.isArray(parsed.splits) && parsed.splits.length ? parsed.splits : base.splits,
-        sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
-        protein: Array.isArray(parsed.protein) ? parsed.protein : [],
-        bodyweight: Array.isArray(parsed.bodyweight) ? parsed.bodyweight : []
-      };
-    } catch (e) {
-      console.warn("Konnte gespeicherte Daten nicht lesen, starte mit Standarddaten.", e);
-      return defaultData();
-    }
-  }
-
-  let state = loadData();
-  function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-
-  let currentSplitId = state.splits[0].id;
+  let state = { splits: [], sessions: [], protein: [], bodyweight: [], settings: { proteinGoal: 150 } };
+  let currentUser = null;
+  let currentSplitId = null;
   let currentView = "dashboard";
-  const VIEW_TITLES = { dashboard: "Dashboard", protein: "Eiweiß", weight: "Gewicht" };
   let restInterval = null;
+  const debounceTimers = {};
+  const VIEW_TITLES = { dashboard: "Dashboard", protein: "Eiweiß", weight: "Gewicht" };
 
   /* ================= utils ================= */
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
-  const uid = () => Math.random().toString(36).slice(2, 9);
   const todayStr = () => new Date().toISOString().slice(0, 10);
 
   function parseNum(v) {
@@ -111,9 +42,7 @@
     return d.toISOString().slice(0, 10);
   }
 
-  function initials(name) {
-    return name.trim().slice(0, 2).toUpperCase();
-  }
+  function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
 
   function getSplit(splitId) { return state.splits.find((s) => s.id === splitId); }
 
@@ -123,18 +52,122 @@
     return list;
   }
 
-  /* ================= sessions ================= */
-  function findSession(splitId, date) {
-    return state.sessions.find((s) => s.splitId === splitId && s.date === date);
+  function showError(msg) { console.error(msg); alert(msg); }
+
+  /* ================= auth ================= */
+  function setAuthMode(mode) {
+    $$("#auth-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.authMode === mode));
+    $("#auth-form").dataset.mode = mode;
+    $("#auth-submit").textContent = mode === "signup" ? "Konto erstellen" : "Anmelden";
+    $("#auth-password").setAttribute("autocomplete", mode === "signup" ? "new-password" : "current-password");
+    $("#auth-hint").textContent = mode === "signup" ? "Falls E-Mail-Bestätigung aktiv ist, prüfe dein Postfach nach dem Registrieren." : "";
+    $("#auth-error").classList.add("hidden");
   }
 
-  function getOrCreateTodaySession(splitId) {
-    let session = findSession(splitId, todayStr());
-    if (!session) {
-      session = { id: uid(), splitId, date: todayStr(), exerciseData: {} };
-      state.sessions.push(session);
+  async function onAuthSubmit(e) {
+    e.preventDefault();
+    const mode = $("#auth-form").dataset.mode || "signin";
+    const email = $("#auth-email").value.trim();
+    const password = $("#auth-password").value;
+    const btn = $("#auth-submit");
+    const errEl = $("#auth-error");
+    errEl.classList.add("hidden");
+    btn.disabled = true;
+    btn.textContent = "...";
+    try {
+      const { data, error } = mode === "signup"
+        ? await sb.auth.signUp({ email, password })
+        : await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (mode === "signup" && data.user && !data.session) {
+        errEl.classList.remove("hidden");
+        errEl.textContent = "Konto erstellt — bitte bestätige deine E-Mail und melde dich dann an.";
+        setAuthMode("signin");
+      }
+    } catch (err) {
+      errEl.textContent = translateAuthError(err.message);
+      errEl.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = ($("#auth-form").dataset.mode === "signup") ? "Konto erstellen" : "Anmelden";
     }
-    return session;
+  }
+
+  function translateAuthError(msg) {
+    if (/already registered/i.test(msg)) return "Diese E-Mail ist schon registriert — melde dich stattdessen an.";
+    if (/invalid login/i.test(msg)) return "E-Mail oder Passwort ist falsch.";
+    if (/password/i.test(msg) && /least/i.test(msg)) return "Das Passwort muss mindestens 6 Zeichen lang sein.";
+    return msg;
+  }
+
+  async function signOut() {
+    await sb.auth.signOut();
+  }
+
+  /* ================= data loading ================= */
+  async function fetchAllData() {
+    const uid = currentUser.id;
+    const [splitsRes, exercisesRes, sessionsRes, sedRes, proteinRes, bwRes, settingsRes] = await Promise.all([
+      sb.from("splits").select("*").eq("archived", false).order("position"),
+      sb.from("exercises").select("*").eq("archived", false).order("position"),
+      sb.from("sessions").select("*"),
+      sb.from("session_exercise_data").select("*"),
+      sb.from("protein_entries").select("*").order("created_at"),
+      sb.from("bodyweight_entries").select("*"),
+      sb.from("user_settings").select("*").eq("user_id", uid).maybeSingle()
+    ]);
+    for (const res of [splitsRes, exercisesRes, sessionsRes, sedRes, proteinRes, bwRes, settingsRes]) {
+      if (res.error) throw res.error;
+    }
+
+    const exercisesBySplit = {};
+    exercisesRes.data.forEach((e) => {
+      (exercisesBySplit[e.split_id] = exercisesBySplit[e.split_id] || []).push({
+        id: e.id, name: e.name, bodyweight: e.bodyweight
+      });
+    });
+
+    state.splits = splitsRes.data.map((s) => ({ id: s.id, name: s.name, exercises: exercisesBySplit[s.id] || [] }));
+
+    const sessionsById = {};
+    state.sessions = sessionsRes.data.map((s) => {
+      const obj = { id: s.id, splitId: s.split_id, date: s.date, exerciseData: {} };
+      sessionsById[s.id] = obj;
+      return obj;
+    });
+    sedRes.data.forEach((row) => {
+      const session = sessionsById[row.session_id];
+      if (!session) return;
+      session.exerciseData[row.exercise_id] = { sets: row.sets || [], _rowId: row.id };
+    });
+
+    const proteinByDate = {};
+    proteinRes.data.forEach((row) => {
+      const day = (proteinByDate[row.date] = proteinByDate[row.date] || { date: row.date, entries: [] });
+      day.entries.push({ id: row.id, amount: Number(row.amount), time: row.entry_time || "" });
+    });
+    state.protein = Object.values(proteinByDate);
+
+    state.bodyweight = bwRes.data.map((row) => ({ id: row.id, date: row.date, value: Number(row.value) }));
+
+    state.settings.proteinGoal = settingsRes.data ? Number(settingsRes.data.protein_goal) : 150;
+
+    if (!currentSplitId || !getSplit(currentSplitId)) {
+      currentSplitId = state.splits.length ? state.splits[0].id : null;
+    }
+  }
+
+  /* ================= sessions (server-backed) ================= */
+  async function ensureTodaySessionId(splitId) {
+    let session = state.sessions.find((s) => s.splitId === splitId && s.date === todayStr());
+    if (session) return session.id;
+    const { data, error } = await sb.from("sessions")
+      .upsert({ user_id: currentUser.id, split_id: splitId, date: todayStr() }, { onConflict: "user_id,split_id,date" })
+      .select().single();
+    if (error) { showError(error.message); throw error; }
+    session = { id: data.id, splitId: data.split_id, date: data.date, exerciseData: {} };
+    state.sessions.push(session);
+    return session.id;
   }
 
   function getPreviousSession(splitId, beforeDate) {
@@ -160,14 +193,38 @@
 
   function topValue(entry, bodyweight) {
     if (!entry || !entry.sets || !entry.sets.length) return null;
-    const vals = entry.sets
-      .map((s) => (bodyweight ? s.reps : s.weight))
-      .filter((v) => v !== null && v !== undefined);
+    const vals = entry.sets.map((s) => (bodyweight ? s.reps : s.weight)).filter((v) => v !== null && v !== undefined);
     if (!vals.length) return null;
     return Math.max(...vals);
   }
 
-  /* ================= rendering: tabs ================= */
+  async function persistSets(exerciseId, sets) {
+    const split = getSplit(currentSplitId);
+    const sessionId = await ensureTodaySessionId(currentSplitId);
+    const { data, error } = await sb.from("session_exercise_data")
+      .upsert({ user_id: currentUser.id, session_id: sessionId, exercise_id: exerciseId, sets }, { onConflict: "session_id,exercise_id" })
+      .select().single();
+    if (error) { showError(error.message); return; }
+    const session = state.sessions.find((s) => s.id === sessionId);
+    session.exerciseData[exerciseId] = { sets: data.sets, _rowId: data.id };
+  }
+
+  function schedulePersist(exerciseId, sets) {
+    clearTimeout(debounceTimers[exerciseId]);
+    debounceTimers[exerciseId] = setTimeout(() => persistSets(exerciseId, sets), 500);
+  }
+
+  async function deleteSetRow(exerciseId) {
+    const sessionId = await ensureTodaySessionId(currentSplitId);
+    const session = state.sessions.find((s) => s.id === sessionId);
+    const entry = session.exerciseData[exerciseId];
+    if (entry && entry._rowId) {
+      await sb.from("session_exercise_data").delete().eq("id", entry._rowId);
+    }
+    delete session.exerciseData[exerciseId];
+  }
+
+  /* ================= tabs / splits ================= */
   function renderTabs() {
     const nav = $("#split-tabs");
     nav.innerHTML = "";
@@ -175,10 +232,7 @@
       const btn = document.createElement("button");
       btn.textContent = s.name;
       if (s.id === currentSplitId) btn.classList.add("active");
-      btn.addEventListener("click", () => {
-        currentSplitId = s.id;
-        render();
-      });
+      btn.addEventListener("click", () => { currentSplitId = s.id; renderExerciseList(); });
       nav.appendChild(btn);
     });
     const addBtn = document.createElement("button");
@@ -186,7 +240,7 @@
     addBtn.title = "Eigenen Split erstellen";
     addBtn.setAttribute("aria-label", "Eigenen Split erstellen");
     addBtn.style.flex = "0 0 auto";
-    addBtn.style.padding = "8px 14px";
+    addBtn.style.padding = "9px 14px";
     addBtn.addEventListener("click", onAddSplit);
     nav.appendChild(addBtn);
   }
@@ -201,33 +255,38 @@
       </div>
     `);
     $("#modal-cancel").addEventListener("click", closeModal);
-    $("#modal-save").addEventListener("click", () => {
+    $("#modal-save").addEventListener("click", async () => {
       const name = $("#new-split-name").value.trim();
       if (!name) return;
-      const split = { id: uid(), name, exercises: [] };
-      state.splits.push(split);
-      saveData();
-      currentSplitId = split.id;
+      const { data, error } = await sb.from("splits")
+        .insert({ user_id: currentUser.id, name, position: state.splits.length })
+        .select().single();
+      if (error) { showError(error.message); return; }
+      state.splits.push({ id: data.id, name: data.name, exercises: [] });
+      currentSplitId = data.id;
       closeModal();
-      render();
+      renderTabs();
+      renderExerciseList();
     });
   }
 
-  function onDeleteCurrentSplit() {
+  async function onDeleteCurrentSplit() {
     if (state.splits.length <= 1) {
       alert("Das ist dein letzter Split — lege zuerst einen neuen an, bevor du diesen löschst.");
       return;
     }
     const split = getSplit(currentSplitId);
     if (!confirm(`Split "${split.name}" wirklich löschen? Bereits geloggte Trainingsdaten bleiben in der Historie erhalten.`)) return;
+    const { error } = await sb.from("splits").update({ archived: true }).eq("id", currentSplitId);
+    if (error) { showError(error.message); return; }
     state.splits = state.splits.filter((s) => s.id !== currentSplitId);
     currentSplitId = state.splits[0].id;
-    saveData();
     closeModal();
-    render();
+    renderTabs();
+    renderExerciseList();
   }
 
-  /* ================= rendering: workout view ================= */
+  /* ================= workout view ================= */
   function trendForExercise(exerciseId) {
     const list = sessionsForExercise(exerciseId);
     if (list.length < 2) return null;
@@ -241,15 +300,17 @@
   }
 
   function renderExerciseList() {
+    if (!currentSplitId) return;
     const split = getSplit(currentSplitId);
-    $("#page-title").textContent = split.name + " day";
+    if (!split) return;
+    if (currentView === "workout") $("#page-title").textContent = split.name + " day";
     $("#today-label").textContent = fmtDateLabel(todayStr());
-    const session = getOrCreateTodaySession(currentSplitId);
+    const session = state.sessions.find((s) => s.splitId === currentSplitId && s.date === todayStr());
     const container = $("#exercise-list");
     container.innerHTML = "";
 
     split.exercises.forEach((ex) => {
-      const entry = session.exerciseData[ex.id];
+      const entry = session && session.exerciseData[ex.id];
       const sets = (entry && entry.sets && entry.sets.length) ? entry.sets : [{ weight: null, reps: null, note: "" }];
       const trend = trendForExercise(ex.id);
       const last = sessionsForExercise(ex.id).filter((s) => s.date < todayStr()).slice(-1)[0];
@@ -296,19 +357,17 @@
       <span class="unit">${ex.bodyweight ? "+kg" : "kg"}</span>
       <input class="num reps-input" type="text" inputmode="numeric" placeholder="0" value="${set.reps ?? ""}" aria-label="Wiederholungen Satz ${index + 1}" />
       <span class="unit">wdh</span>
-      <input class="note note-input" type="text" placeholder="Notiz" value="${set.note ? set.note.replace(/"/g, "&quot;") : ""}" aria-label="Notiz Satz ${index + 1}" />
+      <input class="note note-input" type="text" placeholder="Notiz" value="${set.note ? String(set.note).replace(/"/g, "&quot;") : ""}" aria-label="Notiz Satz ${index + 1}" />
       <button class="mic mic-btn" title="Spracheingabe" aria-label="Spracheingabe">${ICON_MIC}</button>
       ${total > 1 ? `<button class="del del-set-btn" title="Satz löschen" aria-label="Satz löschen">×</button>` : ""}
     `;
     return row;
   }
 
-  function ensureExerciseEntry(exerciseId) {
-    const session = getOrCreateTodaySession(currentSplitId);
-    if (!session.exerciseData[exerciseId]) {
-      session.exerciseData[exerciseId] = { sets: [{ weight: null, reps: null, note: "" }] };
-    }
-    return session.exerciseData[exerciseId];
+  function localEntry(exerciseId) {
+    const session = state.sessions.find((s) => s.splitId === currentSplitId && s.date === todayStr());
+    if (session && session.exerciseData[exerciseId]) return session.exerciseData[exerciseId];
+    return null;
   }
 
   function updateOneRM(card, ex, sets) {
@@ -332,61 +391,67 @@
     $$(".timer-btn").forEach((el) => el.addEventListener("click", () => startRestTimer(parseInt(el.dataset.timer, 10))));
   }
 
+  function currentSetsInDom(exId) {
+    const rows = $$(`.set-row[data-ex-id="${exId}"]`);
+    return rows.map((row) => ({
+      weight: parseNum($(".weight-input", row).value),
+      reps: parseNum($(".reps-input", row).value),
+      note: $(".note-input", row).value
+    }));
+  }
+
   function onSetInput(e) {
     const row = e.target.closest(".set-row");
     const exId = row.dataset.exId;
-    const idx = parseInt(row.dataset.index, 10);
-    const entry = ensureExerciseEntry(exId);
-    while (entry.sets.length <= idx) entry.sets.push({ weight: null, reps: null, note: "" });
-    entry.sets[idx].weight = parseNum($(".weight-input", row).value);
-    entry.sets[idx].reps = parseNum($(".reps-input", row).value);
-    entry.sets[idx].note = $(".note-input", row).value;
-    saveData();
+    const sets = currentSetsInDom(exId);
     const card = row.closest(".exercise-card");
     const ex = allExercises().find((x) => x.id === exId);
-    updateOneRM(card, ex, entry.sets);
+    updateOneRM(card, ex, sets);
+    schedulePersist(exId, sets);
   }
 
-  function onAddSet(e) {
+  async function onAddSet(e) {
     const exId = e.target.dataset.ex;
-    const entry = ensureExerciseEntry(exId);
-    entry.sets.push({ weight: null, reps: null, note: "" });
-    saveData();
+    const existing = localEntry(exId);
+    const sets = existing ? existing.sets.slice() : [{ weight: null, reps: null, note: "" }];
+    sets.push({ weight: null, reps: null, note: "" });
+    await ensureTodaySessionId(currentSplitId);
+    const session = state.sessions.find((s) => s.splitId === currentSplitId && s.date === todayStr());
+    session.exerciseData[exId] = { sets, _rowId: existing ? existing._rowId : null };
     renderExerciseList();
+    persistSets(exId, sets);
   }
 
-  function onDelSet(e) {
+  async function onDelSet(e) {
     const row = e.target.closest(".set-row");
     const exId = row.dataset.exId;
     const idx = parseInt(row.dataset.index, 10);
-    const session = getOrCreateTodaySession(currentSplitId);
-    const entry = session.exerciseData[exId];
-    if (entry) {
-      entry.sets.splice(idx, 1);
-      if (!entry.sets.length) delete session.exerciseData[exId];
+    const sets = currentSetsInDom(exId);
+    sets.splice(idx, 1);
+    if (!sets.length) {
+      await deleteSetRow(exId);
+    } else {
+      await persistSets(exId, sets);
     }
-    saveData();
     renderExerciseList();
   }
 
-  function onRemoveExercise(e) {
+  async function onRemoveExercise(e) {
     const exId = e.target.dataset.ex;
     const split = getSplit(currentSplitId);
     const ex = split.exercises.find((x) => x.id === exId);
     if (!ex) return;
     if (!confirm(`"${ex.name}" aus ${split.name} entfernen? Bisherige Werte bleiben in der Historie erhalten.`)) return;
+    const { error } = await sb.from("exercises").update({ archived: true }).eq("id", exId);
+    if (error) { showError(error.message); return; }
     split.exercises = split.exercises.filter((x) => x.id !== exId);
-    saveData();
     renderExerciseList();
   }
 
   function onMicClick(e) {
     const row = e.target.closest(".set-row");
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) {
-      alert("Spracheingabe wird von diesem Browser nicht unterstützt.");
-      return;
-    }
+    if (!Recognition) { alert("Spracheingabe wird von diesem Browser nicht unterstützt."); return; }
     const rec = new Recognition();
     rec.lang = "de-DE";
     rec.interimResults = false;
@@ -420,26 +485,33 @@
       </div>
     `);
     $("#modal-cancel").addEventListener("click", closeModal);
-    $("#modal-save").addEventListener("click", () => {
+    $("#modal-save").addEventListener("click", async () => {
       const name = $("#new-ex-name").value.trim();
       if (!name) return;
       const bw = $("#new-ex-bw").checked;
-      getSplit(currentSplitId).exercises.push({ id: uid(), name, bodyweight: bw });
-      saveData();
+      const split = getSplit(currentSplitId);
+      const { data, error } = await sb.from("exercises")
+        .insert({ user_id: currentUser.id, split_id: currentSplitId, name, bodyweight: bw, position: split.exercises.length })
+        .select().single();
+      if (error) { showError(error.message); return; }
+      split.exercises.push({ id: data.id, name: data.name, bodyweight: data.bodyweight });
       closeModal();
       renderExerciseList();
     });
   }
 
-  function onRepeatLast() {
+  async function onRepeatLast() {
     const prev = getPreviousSession(currentSplitId, todayStr());
     if (!prev) { alert("Kein früheres Training für diesen Split gefunden."); return; }
-    const today = getOrCreateTodaySession(currentSplitId);
-    Object.keys(prev.exerciseData).forEach((exId) => {
+    await ensureTodaySessionId(currentSplitId);
+    const today = state.sessions.find((s) => s.splitId === currentSplitId && s.date === todayStr());
+    const exIds = Object.keys(prev.exerciseData);
+    for (const exId of exIds) {
       const src = prev.exerciseData[exId];
-      today.exerciseData[exId] = { sets: src.sets.map((s) => ({ weight: s.weight, reps: s.reps, note: "" })) };
-    });
-    saveData();
+      const sets = src.sets.map((s) => ({ weight: s.weight, reps: s.reps, note: "" }));
+      today.exerciseData[exId] = { sets, _rowId: today.exerciseData[exId] ? today.exerciseData[exId]._rowId : null };
+      await persistSets(exId, sets);
+    }
     renderExerciseList();
   }
 
@@ -477,14 +549,10 @@
     $("#stat-up").textContent = up.length;
     $("#stat-flat").textContent = flat.length;
 
-    // streak: distinct trained days in last 7 days
     const last7 = new Set();
-    state.sessions.forEach((s) => {
-      if (hasRealData(s) && s.date >= daysAgoStr(6)) last7.add(s.date);
-    });
+    state.sessions.forEach((s) => { if (hasRealData(s) && s.date >= daysAgoStr(6)) last7.add(s.date); });
     $("#stat-streak").textContent = last7.size;
 
-    // PRs this month
     const thisMonth = todayStr().slice(0, 7);
     let prCount = 0;
     exercises.forEach((ex) => {
@@ -497,10 +565,8 @@
     });
     $("#stat-prs").textContent = prCount;
 
-    // analysis text
     $("#analysis-text").textContent = buildAnalysisText(trends, up, flat);
 
-    // heatmap
     const heatmap = $("#streak-heatmap");
     heatmap.innerHTML = "";
     const trainedDates = new Set(state.sessions.filter(hasRealData).map((s) => s.date));
@@ -512,31 +578,23 @@
       heatmap.appendChild(cell);
     }
 
-    // trend list
     const trendList = $("#trend-list");
     trendList.innerHTML = "";
     if (!trends.length) {
       trendList.innerHTML = `<p class="muted small">Noch nicht genug Daten — trainiere mindestens zweimal dieselbe Übung.</p>`;
     } else {
-      trends
-        .sort((a, b) => (b.trend.dir === "up") - (a.trend.dir === "up"))
-        .forEach(({ ex, trend }) => {
-          const list = sessionsForExercise(ex.id);
-          const last = topValue(list[list.length - 1].entry, ex.bodyweight);
-          const prev = topValue(list[list.length - 2].entry, ex.bodyweight);
-          const unit = ex.bodyweight ? "Wdh" : "kg";
-          const row = document.createElement("div");
-          row.className = "trend-row";
-          row.innerHTML = `
-            <span>${ex.name}</span>
-            <span class="trend-value">${fmtWeight(prev)} → ${fmtWeight(last)} ${unit}
-              <span>${trend.dir === "up" ? "↑" : trend.dir === "down" ? "↓" : "–"}</span>
-            </span>`;
-          trendList.appendChild(row);
-        });
+      trends.sort((a, b) => (b.trend.dir === "up") - (a.trend.dir === "up")).forEach(({ ex, trend }) => {
+        const list = sessionsForExercise(ex.id);
+        const last = topValue(list[list.length - 1].entry, ex.bodyweight);
+        const prev = topValue(list[list.length - 2].entry, ex.bodyweight);
+        const unit = ex.bodyweight ? "Wdh" : "kg";
+        const row = document.createElement("div");
+        row.className = "trend-row";
+        row.innerHTML = `<span>${ex.name}</span><span class="trend-value">${fmtWeight(prev)} → ${fmtWeight(last)} ${unit} <span>${trend.dir === "up" ? "↑" : trend.dir === "down" ? "↓" : "–"}</span></span>`;
+        trendList.appendChild(row);
+      });
     }
 
-    // PR list
     const prList = $("#pr-list");
     prList.innerHTML = "";
     const withData = exercises.filter((ex) => sessionsForExercise(ex.id).length > 0);
@@ -555,12 +613,9 @@
       });
     }
 
-    // volume chart selector
     const select = $("#volume-exercise-select");
     const prevSelected = select.value;
-    select.innerHTML = withData
-      .map((ex) => `<option value="${ex.id}">${ex.splitName} — ${ex.name}</option>`)
-      .join("");
+    select.innerHTML = withData.map((ex) => `<option value="${ex.id}">${ex.splitName} — ${ex.name}</option>`).join("");
     if (withData.length) {
       select.value = withData.some((e) => e.id === prevSelected) ? prevSelected : withData[0].id;
       drawVolumeChart(select.value);
@@ -583,7 +638,7 @@
     return parts.join(" ");
   }
 
-  function drawLineChart(canvas, values, labels) {
+  function drawLineChart(canvas, values) {
     const ctx = canvas.getContext("2d");
     const w = canvas.width = canvas.clientWidth;
     const h = canvas.height;
@@ -662,13 +717,14 @@
     if (!day.entries.length) {
       list.innerHTML = `<p class="muted small">Heute noch nichts erfasst.</p>`;
     } else {
-      day.entries.forEach((entry, i) => {
+      day.entries.forEach((entry) => {
         const row = document.createElement("div");
         row.className = "protein-entry";
-        row.innerHTML = `<span>${entry.time}</span><span>${Math.round(entry.amount)} g</span><button class="icon-btn" data-i="${i}" aria-label="Eintrag löschen" style="width:26px;height:26px;font-size:12px;">×</button>`;
-        row.querySelector("button").addEventListener("click", () => {
-          day.entries.splice(i, 1);
-          saveData();
+        row.innerHTML = `<span>${entry.time}</span><span>${Math.round(entry.amount)} g</span><button class="icon-btn" aria-label="Eintrag löschen" style="width:26px;height:26px;font-size:12px;">×</button>`;
+        row.querySelector("button").addEventListener("click", async () => {
+          const { error } = await sb.from("protein_entries").delete().eq("id", entry.id);
+          if (error) { showError(error.message); return; }
+          day.entries = day.entries.filter((e) => e.id !== entry.id);
           renderProtein();
         });
         list.appendChild(row);
@@ -685,18 +741,20 @@
     drawLineChart($("#protein-history-chart"), last14);
   }
 
-  function addProtein(amount) {
-    const day = todayProteinEntry();
+  async function addProtein(amount) {
     const now = new Date();
-    day.entries.push({ amount, time: now.toTimeString().slice(0, 5) });
-    saveData();
+    const time = now.toTimeString().slice(0, 5);
+    const { data, error } = await sb.from("protein_entries")
+      .insert({ user_id: currentUser.id, date: todayStr(), amount, entry_time: time })
+      .select().single();
+    if (error) { showError(error.message); return; }
+    const day = todayProteinEntry();
+    day.entries.push({ id: data.id, amount: Number(data.amount), time: data.entry_time });
     renderProtein();
   }
 
   /* ================= bodyweight ================= */
-  function sortedWeightEntries() {
-    return [...state.bodyweight].sort((a, b) => (a.date > b.date ? 1 : -1));
-  }
+  function sortedWeightEntries() { return [...state.bodyweight].sort((a, b) => (a.date > b.date ? 1 : -1)); }
 
   function renderWeight() {
     const list = sortedWeightEntries();
@@ -737,9 +795,10 @@
         const row = document.createElement("div");
         row.className = "protein-entry";
         row.innerHTML = `<span>${entry.date}</span><span>${fmtWeight(entry.value)} kg</span><button class="icon-btn" aria-label="Eintrag löschen" style="width:26px;height:26px;font-size:12px;">×</button>`;
-        row.querySelector("button").addEventListener("click", () => {
-          state.bodyweight = state.bodyweight.filter((w) => w.date !== entry.date);
-          saveData();
+        row.querySelector("button").addEventListener("click", async () => {
+          const { error } = await sb.from("bodyweight_entries").delete().eq("id", entry.id);
+          if (error) { showError(error.message); return; }
+          state.bodyweight = state.bodyweight.filter((w) => w.id !== entry.id);
           renderWeight();
         });
         logList.appendChild(row);
@@ -747,13 +806,16 @@
     }
   }
 
-  function saveWeightEntry() {
+  async function saveWeightEntry() {
     const v = parseNum($("#weight-input").value);
     if (v === null) return;
+    const { data, error } = await sb.from("bodyweight_entries")
+      .upsert({ user_id: currentUser.id, date: todayStr(), value: v }, { onConflict: "user_id,date" })
+      .select().single();
+    if (error) { showError(error.message); return; }
     const existing = state.bodyweight.find((w) => w.date === todayStr());
-    if (existing) existing.value = v;
-    else state.bodyweight.push({ date: todayStr(), value: v });
-    saveData();
+    if (existing) { existing.value = Number(data.value); existing.id = data.id; }
+    else state.bodyweight.push({ id: data.id, date: data.date, value: Number(data.value) });
     renderWeight();
   }
 
@@ -773,10 +835,8 @@
       <div class="modal-actions" style="flex-direction:column;">
         <button class="ghost-btn full" id="m-goal">Eiweiß-Ziel ändern</button>
         <button class="ghost-btn full" id="m-export-csv">Trainingsdaten als CSV exportieren</button>
-        <button class="ghost-btn full" id="m-export-json">Backup exportieren (JSON)</button>
-        <button class="ghost-btn full" id="m-import-json">Backup wiederherstellen</button>
-        <input type="file" id="m-import-input" accept="application/json" class="hidden" />
         <button class="ghost-btn full" id="m-delete-split">Aktuellen Split löschen</button>
+        <button class="ghost-btn full" id="m-signout">Abmelden</button>
         <button class="ghost-btn full" id="m-close">Schließen</button>
       </div>
     `);
@@ -791,19 +851,20 @@
         </div>
       `);
       $("#modal-cancel").addEventListener("click", closeModal);
-      $("#modal-save").addEventListener("click", () => {
+      $("#modal-save").addEventListener("click", async () => {
         const v = parseNum($("#goal-input").value);
-        if (v) state.settings.proteinGoal = v;
-        saveData();
+        if (!v) return;
+        const { error } = await sb.from("user_settings")
+          .upsert({ user_id: currentUser.id, protein_goal: v }, { onConflict: "user_id" });
+        if (error) { showError(error.message); return; }
+        state.settings.proteinGoal = v;
         closeModal();
         renderProtein();
       });
     });
     $("#m-export-csv").addEventListener("click", exportCsv);
-    $("#m-export-json").addEventListener("click", exportJson);
-    $("#m-import-json").addEventListener("click", () => $("#m-import-input").click());
-    $("#m-import-input").addEventListener("change", importJson);
     $("#m-delete-split").addEventListener("click", onDeleteCurrentSplit);
+    $("#m-signout").addEventListener("click", async () => { closeModal(); await signOut(); });
   }
 
   function download(filename, content, mime) {
@@ -832,31 +893,6 @@
     closeModal();
   }
 
-  function exportJson() {
-    download("gymlog-backup.json", JSON.stringify(state, null, 2), "application/json");
-    closeModal();
-  }
-
-  function importJson(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(reader.result);
-        if (!confirm("Aktuelle Daten werden überschrieben. Fortfahren?")) return;
-        state = parsed;
-        saveData();
-        currentSplitId = state.splits[0].id;
-        closeModal();
-        render();
-      } catch (err) {
-        alert("Datei konnte nicht gelesen werden.");
-      }
-    };
-    reader.readAsText(file);
-  }
-
   /* ================= view switching ================= */
   function switchView(view) {
     currentView = view;
@@ -872,16 +908,12 @@
     if (view === "weight") renderWeight();
   }
 
-  function render() {
-    renderTabs();
-    if (currentView === "workout") renderExerciseList();
-    if (currentView === "dashboard") renderDashboard();
-    if (currentView === "protein") renderProtein();
-    if (currentView === "weight") renderWeight();
-  }
+  /* ================= boot ================= */
+  let appInited = false;
 
-  /* ================= init ================= */
-  function init() {
+  function bindAppEventsOnce() {
+    if (appInited) return;
+    appInited = true;
     $$("#bottom-nav button").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
     $("#add-exercise-btn").addEventListener("click", onAddExercise);
     $("#repeat-last-btn").addEventListener("click", onRepeatLast);
@@ -911,13 +943,57 @@
       $("#rest-timer").classList.add("hidden");
     });
 
-    render();
-
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("service-worker.js").catch(() => {});
       });
     }
+  }
+
+  async function bootApp() {
+    $("#auth-gate").classList.add("hidden");
+    $("#app").classList.remove("hidden");
+    try {
+      await fetchAllData();
+    } catch (err) {
+      showError("Konnte Daten nicht laden: " + err.message);
+      return;
+    }
+    bindAppEventsOnce();
+    renderTabs();
+    switchView("dashboard");
+  }
+
+  function showAuthGate() {
+    $("#app").classList.add("hidden");
+    $("#auth-gate").classList.remove("hidden");
+  }
+
+  function initAuthUI() {
+    $$("#auth-tabs button").forEach((b) => b.addEventListener("click", () => setAuthMode(b.dataset.authMode)));
+    $("#auth-form").addEventListener("submit", onAuthSubmit);
+    setAuthMode("signin");
+  }
+
+  async function init() {
+    initAuthUI();
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) { currentUser = session.user; await bootApp(); }
+    else { showAuthGate(); }
+
+    sb.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session && (!currentUser || currentUser.id !== session.user.id)) {
+        currentUser = session.user;
+        bootApp();
+      }
+      if (event === "SIGNED_OUT") {
+        currentUser = null;
+        state = { splits: [], sessions: [], protein: [], bodyweight: [], settings: { proteinGoal: 150 } };
+        currentSplitId = null;
+        appInited = false;
+        showAuthGate();
+      }
+    });
   }
 
   document.addEventListener("DOMContentLoaded", init);

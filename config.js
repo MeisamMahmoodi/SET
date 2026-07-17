@@ -1,0 +1,4 @@
+window.GYMLOG_CONFIG = {
+  SUPABASE_URL: "https://elirxmcmsbncqxbwrfdo.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVsaXJ4bWNtc2JuY3F4YndyZmRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyODIwNTksImV4cCI6MjA5OTg1ODA1OX0.F2yVpmg52jFI62s5XXdri5gZlYsqFiBt4gzHUoJ0_YM"
+};
