@@ -463,6 +463,10 @@ canvas { display: block; width: 100%; }
   background: var(--bg);
   width: 100%;
   max-width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   border-radius: 24px 24px 0 0;
   padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
 }
@@ -476,6 +480,14 @@ canvas { display: block; width: 100%; }
   background: var(--card);
   font-size: 16px; /* iOS zooms the whole page in on focus if an input's font-size is below 16px */
   color: var(--text);
+}
+/* Keeps the search field visible above the results while the list below it scrolls,
+   instead of the typed query scrolling out of view behind the results. */
+#food-search-input {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
 }
 .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
 .modal-actions button { flex: 1; }
