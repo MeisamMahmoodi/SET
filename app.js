@@ -1249,16 +1249,20 @@
     if (!results) return;
     results.innerHTML = `<p class="muted small">Suche …</p>`;
 
-    // The legacy world.openfoodfacts.org search backend (/api/v2/search, /cgi/search.pl) has been
-    // unreliable (intermittent HTTP 503s). search-a-licious is OFF's actively maintained replacement.
-    // We query both in parallel and merge results, so a hiccup in either source doesn't break search.
-    // Dropped the countries_tags_en=Germany request param again: combined with search_terms/q it made
-    // both endpoints fail or come back empty far more often in real-world use than in testing - the
-    // German-market relevance is handled entirely client-side below instead (as a soft preference,
-    // not a hard requirement - see note on isSoldInGermany).
+    // Tested live from a real Chrome tab against the actual site, repeatedly:
+    // - search.openfoodfacts.org (search-a-licious) fails with "Failed to fetch" on every single
+    //   request - a browser CORS block, not flakiness. It can never work from here, dropped entirely.
+    // - world.openfoodfacts.org/api/v2/search never failed once, but its search_terms param doesn't
+    //   actually filter by relevance anymore - it returns an arbitrary product list regardless of the
+    //   query (confirmed: searching "toast" returned Sidi Ali, Jaouda, unrelated Moroccan products).
+    // - world.openfoodfacts.org/cgi/search.pl?...&json=1 DOES filter by real relevance (searching
+    //   "toast" correctly returned Toastbrot-type products) but is itself frequently down - 4 of 5
+    //   rapid test queries failed with the same "Failed to fetch" signature.
+    // Querying both: cgi/search.pl supplies genuinely relevant hits when it's up, api/v2/search is the
+    // reliable backstop for when it isn't (client-side matchesQueryText still gates its noisy results).
     const attempts = await Promise.allSettled([
-      fetchJsonOrThrow(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&page_size=40`)
-        .then((d) => d.hits || d.products || []),
+      fetchJsonOrThrow(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1&page_size=40`)
+        .then((d) => d.products || []),
       fetchJsonOrThrow(`https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&page_size=40&fields=code,product_name,product_name_de,brands,serving_size,serving_quantity,nutriments,countries_tags`)
         .then((d) => d.products || [])
     ]);
