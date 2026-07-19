@@ -1120,9 +1120,20 @@
 
   // Matches Cyrillic / Arabic / CJK characters so results in the wrong script get filtered out.
   const NON_LATIN_RE = /[Ѐ-ӿ؀-ۿݐ-ݿ一-鿿]/;
+  const ALL_DIGITS_RE = /^[\d\s./-]+$/; // rejects entries whose "name" is just a barcode
 
   function pickFoodName(p) {
     return p.product_name_de || p.product_name || p.product_name_en || "";
+  }
+
+  function isSoldInGermany(p) {
+    return Array.isArray(p.countries_tags) && p.countries_tags.includes("en:germany");
+  }
+
+  function hasRealNutrition(p) {
+    const n = p.nutriments || {};
+    return ["energy-kcal_100g", "proteins_100g", "carbohydrates_100g", "fat_100g"]
+      .some((k) => Number(n[k]) > 0);
   }
 
   async function fetchJsonOrThrow(url) {
@@ -1138,12 +1149,14 @@
 
     // The legacy world.openfoodfacts.org search backend (/api/v2/search, /cgi/search.pl) has been
     // unreliable (intermittent HTTP 503s). search-a-licious is OFF's actively maintained replacement.
-    // We query both in parallel and merge results, so a hiccup in either source doesn't break search,
-    // and bias towards German-market products since the shared database is global by default.
+    // We query both in parallel and merge results, so a hiccup in either source doesn't break search.
+    // countries_tags_en=Germany asks the server to only return products sold in Germany (imports,
+    // fast-food chains etc. included, as long as they're tagged) - this is a best-effort request param,
+    // the real gate is the client-side isSoldInGermany() filter below.
     const attempts = await Promise.allSettled([
-      fetchJsonOrThrow(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&langs=de&page_size=20`)
+      fetchJsonOrThrow(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&countries_tags_en=Germany&page_size=40`)
         .then((d) => d.hits || d.products || []),
-      fetchJsonOrThrow(`https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&page_size=20&fields=code,product_name,product_name_de,brands,serving_size,serving_quantity,nutriments,countries_tags`)
+      fetchJsonOrThrow(`https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&countries_tags_en=Germany&page_size=40&fields=code,product_name,product_name_de,brands,serving_size,serving_quantity,nutriments,countries_tags`)
         .then((d) => d.products || [])
     ]);
 
@@ -1163,18 +1176,22 @@
       });
     });
 
+    // Hard filter: only real names (no barcode-as-name junk), only Latin script, only products
+    // actually sold in Germany, and only entries that carry usable nutrition data.
     let products = [...byKey.values()]
       .map((p) => ({ ...p, _name: pickFoodName(p) }))
-      .filter((p) => p._name && !NON_LATIN_RE.test(p._name));
+      .filter((p) =>
+        p._name &&
+        !NON_LATIN_RE.test(p._name) &&
+        !ALL_DIGITS_RE.test(p._name) &&
+        isSoldInGermany(p) &&
+        hasRealNutrition(p)
+      );
 
-    // Prefer products tagged for the German market when available.
-    products.sort((a, b) => {
-      const aDe = (a.countries_tags || []).includes("en:germany") ? 0 : 1;
-      const bDe = (b.countries_tags || []).includes("en:germany") ? 0 : 1;
-      return aDe - bDe;
-    });
-
-    if (!products.length) { results.innerHTML = `<p class="muted small">Keine Ergebnisse gefunden.</p>`; return; }
+    if (!products.length) {
+      results.innerHTML = `<p class="muted small">Keine Treffer für den deutschen Markt gefunden. Versuch's mit einem anderen Begriff (z. B. Markenname).</p>`;
+      return;
+    }
 
     results.innerHTML = "";
     products.forEach((p) => {
