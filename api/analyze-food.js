@@ -12,6 +12,20 @@ Antworte NUR mit validem JSON, exakt in diesem Format:
 {"food_name": "kurzer deutscher Name", "grams": Zahl, "calories": Zahl, "protein": Zahl, "carbs": Zahl, "fat": Zahl, "confidence": "high"|"medium"|"low"}
 Wenn kein Essen erkennbar ist, antworte exakt mit {"error": "no_food_detected"}`;
 
+const RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    food_name: { type: "STRING" },
+    grams: { type: "NUMBER" },
+    calories: { type: "NUMBER" },
+    protein: { type: "NUMBER" },
+    carbs: { type: "NUMBER" },
+    fat: { type: "NUMBER" },
+    confidence: { type: "STRING", enum: ["high", "medium", "low"] },
+    error: { type: "STRING" }
+  }
+};
+
 const MODEL = "gemini-flash-latest";
 
 export default async function handler(req, res) {
@@ -52,7 +66,9 @@ export default async function handler(req, res) {
           systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
           generationConfig: {
             responseMimeType: "application/json",
-            maxOutputTokens: 300
+            responseSchema: RESPONSE_SCHEMA,
+            maxOutputTokens: 1024,
+            thinkingConfig: { thinkingBudget: 0 }
           }
         })
       }
