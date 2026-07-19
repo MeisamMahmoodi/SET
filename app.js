@@ -1118,36 +1118,80 @@
     input.focus();
   }
 
+  // Matches Cyrillic / Arabic / CJK characters so results in the wrong script get filtered out.
+  const NON_LATIN_RE = /[Ѐ-ӿ؀-ۿݐ-ݿ一-鿿]/;
+
+  function pickFoodName(p) {
+    return p.product_name_de || p.product_name || p.product_name_en || "";
+  }
+
+  async function fetchJsonOrThrow(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  }
+
   async function searchFoods(query) {
     const results = $("#food-search-results");
     if (!results) return;
     results.innerHTML = `<p class="muted small">Suche …</p>`;
-    try {
-      const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&page_size=15&fields=code,product_name,brands,serving_size,serving_quantity,nutriments`;
-      const res = await fetch(url);
-      const data = await res.json();
-      const products = (data.products || []).filter((p) => p.product_name);
-      if (!results.isConnected) return;
-      if (!products.length) { results.innerHTML = `<p class="muted small">Keine Ergebnisse gefunden.</p>`; return; }
-      results.innerHTML = "";
-      products.forEach((p) => {
-        const n = p.nutriments || {};
-        const kcal = n["energy-kcal_100g"];
-        const row = document.createElement("div");
-        row.className = "food-result-row";
-        row.innerHTML = `
-          <div>
-            <p class="food-result-name">${p.product_name}</p>
-            <p class="muted small">${p.brands || ""}${p.serving_size ? " · " + p.serving_size : ""}</p>
-          </div>
-          <span class="muted small">${kcal ? Math.round(kcal) + " kcal/100g" : ""}</span>
-        `;
-        row.addEventListener("click", () => openQuantityStep(p));
-        results.appendChild(row);
-      });
-    } catch (e) {
-      if (results.isConnected) results.innerHTML = `<p class="muted small">Keine Verbindung zur Lebensmittel-Datenbank.</p>`;
+
+    // The legacy world.openfoodfacts.org search backend (/api/v2/search, /cgi/search.pl) has been
+    // unreliable (intermittent HTTP 503s). search-a-licious is OFF's actively maintained replacement.
+    // We query both in parallel and merge results, so a hiccup in either source doesn't break search,
+    // and bias towards German-market products since the shared database is global by default.
+    const attempts = await Promise.allSettled([
+      fetchJsonOrThrow(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&langs=de&page_size=20`)
+        .then((d) => d.hits || d.products || []),
+      fetchJsonOrThrow(`https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&page_size=20&fields=code,product_name,product_name_de,brands,serving_size,serving_quantity,nutriments,countries_tags`)
+        .then((d) => d.products || [])
+    ]);
+
+    if (!results.isConnected) return;
+
+    if (attempts.every((r) => r.status === "rejected")) {
+      results.innerHTML = `<p class="muted small">Lebensmittel-Datenbank gerade nicht erreichbar. Versuch's gleich nochmal.</p>`;
+      return;
     }
+
+    const byKey = new Map();
+    attempts.forEach((r) => {
+      if (r.status !== "fulfilled") return;
+      (r.value || []).forEach((p) => {
+        const key = p.code || pickFoodName(p);
+        if (key && !byKey.has(key)) byKey.set(key, p);
+      });
+    });
+
+    let products = [...byKey.values()]
+      .map((p) => ({ ...p, _name: pickFoodName(p) }))
+      .filter((p) => p._name && !NON_LATIN_RE.test(p._name));
+
+    // Prefer products tagged for the German market when available.
+    products.sort((a, b) => {
+      const aDe = (a.countries_tags || []).includes("en:germany") ? 0 : 1;
+      const bDe = (b.countries_tags || []).includes("en:germany") ? 0 : 1;
+      return aDe - bDe;
+    });
+
+    if (!products.length) { results.innerHTML = `<p class="muted small">Keine Ergebnisse gefunden.</p>`; return; }
+
+    results.innerHTML = "";
+    products.forEach((p) => {
+      const n = p.nutriments || {};
+      const kcal = n["energy-kcal_100g"];
+      const row = document.createElement("div");
+      row.className = "food-result-row";
+      row.innerHTML = `
+        <div>
+          <p class="food-result-name">${p._name}</p>
+          <p class="muted small">${p.brands || ""}${p.serving_size ? " · " + p.serving_size : ""}</p>
+        </div>
+        <span class="muted small">${kcal ? Math.round(kcal) + " kcal/100g" : ""}</span>
+      `;
+      row.addEventListener("click", () => openQuantityStep({ ...p, product_name: p._name }));
+      results.appendChild(row);
+    });
   }
 
   function openQuantityStep(product) {
