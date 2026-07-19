@@ -101,30 +101,63 @@
   </main>
 
   <main id="view-protein" class="view hidden">
-    <p class="section-label">Eiweiß heute</p>
-    <div class="card">
-      <div class="protein-main">
-        <canvas id="protein-ring" width="72" height="72"></canvas>
-        <div>
-          <p class="big-num"><span id="protein-current">0</span> <span class="muted small">/ <span id="protein-goal">150</span> g</span></p>
-          <p class="muted small" id="protein-remaining"></p>
+    <div id="nutrition-overview">
+      <p class="section-label">Kalorien heute</p>
+      <div class="card workout-progress-card nutrition-hero" id="calorie-hero-card">
+        <p class="wp-label" id="calorie-hero-label">0 / 2200 kcal</p>
+        <div class="wp-bar" id="calorie-bar"></div>
+      </div>
+
+      <div class="macro-grid">
+        <div class="card macro-block" data-macro="protein">
+          <p class="stat-head">Protein</p>
+          <p class="macro-num"><span id="macro-protein-current">0</span><span class="muted small">/<span id="macro-protein-goal">150</span>g</span></p>
+        </div>
+        <div class="card macro-block" data-macro="carbs">
+          <p class="stat-head">Carbs</p>
+          <p class="macro-num"><span id="macro-carbs-current">0</span><span class="muted small">/<span id="macro-carbs-goal">250</span>g</span></p>
+        </div>
+        <div class="card macro-block" data-macro="fat">
+          <p class="stat-head">Fett</p>
+          <p class="macro-num"><span id="macro-fat-current">0</span><span class="muted small">/<span id="macro-fat-goal">70</span>g</span></p>
         </div>
       </div>
-      <div class="quick-add-grid">
-        <button class="ghost-btn light" data-add-protein="20">+20 g</button>
-        <button class="ghost-btn light" data-add-protein="30">+30 g</button>
-        <button class="ghost-btn light" id="protein-custom-btn">+ eigener Wert</button>
+
+      <button class="ghost-btn full" id="add-meal-btn">+ Mahlzeit hinzufügen</button>
+
+      <div class="card analysis-card" style="margin-top:6px;">
+        <div class="live-dot"><span></span>Analyse läuft</div>
+        <p id="nutrition-analysis-text">Sammle noch Daten …</p>
       </div>
     </div>
-    <p class="section-label">Verlauf</p>
-    <div class="card">
-      <canvas id="protein-history-chart" height="100"></canvas>
+
+    <div id="nutrition-detail" class="hidden">
+      <button class="ghost-btn small" id="nutrition-back-btn" style="width:auto;padding:8px 14px;margin-bottom:10px;">‹ Zurück</button>
+      <p class="section-label" id="nutrition-detail-label">Protein heute</p>
+      <div class="card">
+        <div class="protein-main">
+          <canvas id="nutrition-ring" width="72" height="72"></canvas>
+          <div>
+            <p class="big-num"><span id="nutrition-detail-current">0</span> <span class="muted small">/ <span id="nutrition-detail-goal">150</span> <span id="nutrition-detail-unit">g</span></span></p>
+            <p class="muted small" id="nutrition-detail-remaining"></p>
+          </div>
+        </div>
+        <div class="quick-add-grid hidden" id="nutrition-quick-add">
+          <button class="ghost-btn light" data-add-protein="20">+20 g</button>
+          <button class="ghost-btn light" data-add-protein="30">+30 g</button>
+          <button class="ghost-btn light" id="protein-custom-btn">+ eigener Wert</button>
+        </div>
+      </div>
+      <p class="section-label">Verlauf</p>
+      <div class="card">
+        <canvas id="nutrition-history-chart" height="100"></canvas>
+      </div>
+      <button class="details-toggle-btn" id="nutrition-log-toggle-btn">
+        <span id="nutrition-log-toggle-label">0 Einträge heute</span>
+        <span class="muted small" id="nutrition-log-toggle-arrow">anzeigen ›</span>
+      </button>
+      <div class="card hidden" id="nutrition-log-list"></div>
     </div>
-    <button class="details-toggle-btn" id="protein-log-toggle-btn">
-      <span id="protein-log-toggle-label">0 Einträge heute</span>
-      <span class="muted small" id="protein-log-toggle-arrow">anzeigen ›</span>
-    </button>
-    <div class="card hidden" id="protein-log-list"></div>
   </main>
 
   <main id="view-weight" class="view hidden">
@@ -160,8 +193,8 @@
       <span class="nav-label">Dashboard</span>
     </button>
     <button data-view="protein">
-      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-3.5 5-6 8.5-6 11.5a6 6 0 0 0 12 0C18 11.5 15.5 8 12 3z"/></svg></span>
-      <span class="nav-label">Eiweiß</span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v7a2 2 0 0 0 2 2v9M7 3v9M9.5 3v9M16 3c-1.5 0-2.5 1.8-2.5 5s1 5 2.5 5v9"/></svg></span>
+      <span class="nav-label">Ernährung</span>
     </button>
     <button data-view="weight">
       <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="8.5" width="17" height="12" rx="3"/><path d="M9 11l3-1 3 1M12 10v4"/></svg></span>

@@ -15,7 +15,10 @@
     }
   });
 
-  let state = { splits: [], sessions: [], protein: [], bodyweight: [], settings: { proteinGoal: 150 } };
+  let state = {
+    splits: [], sessions: [], protein: [], bodyweight: [], nutrition: [],
+    settings: { proteinGoal: 150, calorieGoal: 2200, carbsGoal: 250, fatGoal: 70 }
+  };
   let currentUser = null;
   let currentSplitId = null;
   let currentView = "dashboard";
@@ -24,8 +27,16 @@
   let prExpanded = false;
   let expandedExerciseId = null;
   let dashboardTab = "trend";
+  let nutritionDetailMacro = null;
+
+  const MACRO_CONFIG = {
+    protein: { label: "Protein", unit: "g", goalKey: "proteinGoal", showQuickAdd: true },
+    carbs: { label: "Carbs", unit: "g", goalKey: "carbsGoal", showQuickAdd: false },
+    fat: { label: "Fett", unit: "g", goalKey: "fatGoal", showQuickAdd: false },
+    calories: { label: "Kalorien", unit: "kcal", goalKey: "calorieGoal", showQuickAdd: false }
+  };
   const debounceTimers = {};
-  const VIEW_TITLES = { dashboard: "Dashboard", protein: "Eiweiß", weight: "Gewicht" };
+  const VIEW_TITLES = { dashboard: "Dashboard", protein: "Ernährung", weight: "Gewicht" };
 
   /* ================= utils ================= */
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -119,16 +130,17 @@
   /* ================= data loading ================= */
   async function fetchAllData() {
     const uid = currentUser.id;
-    const [splitsRes, exercisesRes, sessionsRes, sedRes, proteinRes, bwRes, settingsRes] = await Promise.all([
+    const [splitsRes, exercisesRes, sessionsRes, sedRes, proteinRes, bwRes, nutritionRes, settingsRes] = await Promise.all([
       sb.from("splits").select("*").eq("archived", false).order("position"),
       sb.from("exercises").select("*").eq("archived", false).order("position"),
       sb.from("sessions").select("*"),
       sb.from("session_exercise_data").select("*"),
       sb.from("protein_entries").select("*").order("created_at"),
       sb.from("bodyweight_entries").select("*"),
+      sb.from("nutrition_entries").select("*").order("created_at"),
       sb.from("user_settings").select("*").eq("user_id", uid).maybeSingle()
     ]);
-    for (const res of [splitsRes, exercisesRes, sessionsRes, sedRes, proteinRes, bwRes, settingsRes]) {
+    for (const res of [splitsRes, exercisesRes, sessionsRes, sedRes, proteinRes, bwRes, nutritionRes, settingsRes]) {
       if (res.error) throw res.error;
     }
 
@@ -162,7 +174,18 @@
 
     state.bodyweight = bwRes.data.map((row) => ({ id: row.id, date: row.date, value: Number(row.value) }));
 
+    state.nutrition = nutritionRes.data.map((row) => ({
+      id: row.id, date: row.date, foodName: row.food_name, brand: row.brand,
+      quantity: Number(row.quantity), quantityUnit: row.quantity_unit, servingLabel: row.serving_label,
+      grams: row.grams !== null && row.grams !== undefined ? Number(row.grams) : null,
+      calories: Number(row.calories), protein: Number(row.protein), carbs: Number(row.carbs), fat: Number(row.fat),
+      time: row.entry_time || ""
+    }));
+
     state.settings.proteinGoal = settingsRes.data ? Number(settingsRes.data.protein_goal) : 150;
+    state.settings.calorieGoal = settingsRes.data ? Number(settingsRes.data.calorie_goal) : 2200;
+    state.settings.carbsGoal = settingsRes.data ? Number(settingsRes.data.carbs_goal) : 250;
+    state.settings.fatGoal = settingsRes.data ? Number(settingsRes.data.fat_goal) : 70;
 
     if (!currentSplitId || !getSplit(currentSplitId)) {
       currentSplitId = state.splits.length ? state.splits[0].id : null;
@@ -867,35 +890,26 @@
     drawSmoothChart($("#volume-chart"), values, 130);
   }
 
-  /* ================= protein ================= */
+  /* ================= nutrition ================= */
   function todayProteinEntry() {
     let day = state.protein.find((p) => p.date === todayStr());
     if (!day) { day = { date: todayStr(), entries: [] }; state.protein.push(day); }
     return day;
   }
 
-  function renderProtein() {
-    const goal = state.settings.proteinGoal;
-    const day = todayProteinEntry();
-    const current = day.entries.reduce((sum, e) => sum + e.amount, 0);
-    $("#protein-current").textContent = Math.round(current);
-    $("#protein-goal").textContent = goal;
-    const remaining = goal - current;
-    $("#protein-remaining").textContent = remaining > 0 ? `noch ${Math.round(remaining)} g bis zum Ziel` : "Ziel erreicht";
-
+  function drawRing(canvas, current, goal) {
     // fixed 72x72 CSS size, scaled for device pixel ratio so it stays crisp —
-    // ring.width/height are set explicitly every time (never read back), so this can't runaway like the line charts once did
-    const ring = $("#protein-ring");
-    const ctx = ring.getContext("2d");
+    // canvas.width/height are set explicitly every time (never read back), so this can't runaway like the line charts once did
+    const ctx = canvas.getContext("2d");
     const dpr = window.devicePixelRatio || 1;
     const size = 72;
-    ring.width = size * dpr;
-    ring.height = size * dpr;
-    ring.style.width = size + "px";
-    ring.style.height = size + "px";
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    canvas.style.width = size + "px";
+    canvas.style.height = size + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
-    const pct = Math.max(0, Math.min(1, current / goal));
+    const pct = goal ? Math.max(0, Math.min(1, current / goal)) : 0;
     ctx.strokeStyle = "#f2f2f0";
     ctx.lineWidth = 6;
     ctx.beginPath();
@@ -906,35 +920,168 @@
     ctx.beginPath();
     ctx.arc(size / 2, size / 2, 28, -Math.PI / 2, -Math.PI / 2 + pct * Math.PI * 2);
     ctx.stroke();
+  }
 
-    $("#protein-log-toggle-label").textContent = `${day.entries.length} Eintr${day.entries.length === 1 ? "ag" : "äge"} heute`;
-
-    const list = $("#protein-log-list");
-    list.innerHTML = "";
-    if (!day.entries.length) {
-      list.innerHTML = `<p class="muted small">Heute noch nichts erfasst.</p>`;
-    } else {
-      day.entries.forEach((entry) => {
-        const row = document.createElement("div");
-        row.className = "protein-entry";
-        row.innerHTML = `<span>${entry.time}</span><span>${Math.round(entry.amount)} g</span><button class="icon-btn" aria-label="Eintrag löschen" style="width:26px;height:26px;font-size:12px;">×</button>`;
-        row.querySelector("button").addEventListener("click", async () => {
-          const { error } = await sb.from("protein_entries").delete().eq("id", entry.id);
-          if (error) { showError(error.message); return; }
-          day.entries = day.entries.filter((e) => e.id !== entry.id);
-          renderProtein();
-        });
-        list.appendChild(row);
-      });
+  function macroValueForDate(macro, d) {
+    const nEntries = state.nutrition.filter((n) => n.date === d);
+    if (macro === "calories") return nEntries.reduce((s, e) => s + e.calories, 0);
+    if (macro === "carbs") return nEntries.reduce((s, e) => s + e.carbs, 0);
+    if (macro === "fat") return nEntries.reduce((s, e) => s + e.fat, 0);
+    if (macro === "protein") {
+      const quickAdd = (state.protein.find((p) => p.date === d) || { entries: [] }).entries.reduce((s, e) => s + e.amount, 0);
+      const fromMeals = nEntries.reduce((s, e) => s + e.protein, 0);
+      return quickAdd + fromMeals;
     }
+    return 0;
+  }
 
-    const last14 = [];
+  function macroEntriesForDate(macro, d) {
+    const rows = [];
+    state.nutrition.filter((n) => n.date === d).forEach((n) => {
+      const val = macro === "calories" ? n.calories : macro === "carbs" ? n.carbs : macro === "fat" ? n.fat : n.protein;
+      rows.push({
+        id: n.id, time: n.time, label: n.foodName,
+        valueText: fmtWeight(val) + (macro === "calories" ? " kcal" : " g"),
+        source: "nutrition"
+      });
+    });
+    if (macro === "protein") {
+      const day = state.protein.find((p) => p.date === d);
+      if (day) day.entries.forEach((e) => rows.push({ id: e.id, time: e.time, label: "Eiweiß", valueText: fmtWeight(e.amount) + " g", source: "protein" }));
+    }
+    return rows.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  }
+
+  function macroHistoryLast14(macro) {
+    const out = [];
     for (let i = 13; i >= 0; i--) {
       const d = daysAgoStr(i);
-      const rec = state.protein.find((p) => p.date === d);
-      if (rec) last14.push(rec.entries.reduce((s, e) => s + e.amount, 0));
+      const hasDay = macro === "protein"
+        ? (state.protein.some((p) => p.date === d) || state.nutrition.some((n) => n.date === d))
+        : state.nutrition.some((n) => n.date === d);
+      if (hasDay) out.push(macroValueForDate(macro, d));
     }
-    drawSmoothChart($("#protein-history-chart"), last14, 100);
+    return out;
+  }
+
+  async function deleteMacroEntry(row) {
+    if (row.source === "protein") {
+      const { error } = await sb.from("protein_entries").delete().eq("id", row.id);
+      if (error) { showError(error.message); return; }
+      const day = state.protein.find((p) => p.date === todayStr());
+      if (day) day.entries = day.entries.filter((e) => e.id !== row.id);
+    } else {
+      const { error } = await sb.from("nutrition_entries").delete().eq("id", row.id);
+      if (error) { showError(error.message); return; }
+      state.nutrition = state.nutrition.filter((n) => n.id !== row.id);
+    }
+    renderNutrition();
+  }
+
+  function buildNutritionAnalysisText() {
+    if (!state.nutrition.length && !state.protein.length) {
+      return "Sammle noch Daten — trage Mahlzeiten oder Eiweiß ein, um eine Analyse zu sehen.";
+    }
+    const last7 = [];
+    for (let i = 1; i <= 7; i++) last7.push(daysAgoStr(i));
+    const proteinAvg = last7.reduce((s, d) => s + macroValueForDate("protein", d), 0) / 7;
+    const kcalAvg = last7.reduce((s, d) => s + macroValueForDate("calories", d), 0) / 7;
+    const today = todayStr();
+    const proteinToday = macroValueForDate("protein", today);
+    const kcalToday = macroValueForDate("calories", today);
+    const parts = [];
+    if (proteinAvg > 0) {
+      const diff = proteinToday - proteinAvg;
+      parts.push(diff >= 0
+        ? `Protein liegt heute ${fmtWeight(diff)} g über deinem 7-Tage-Schnitt.`
+        : `Protein liegt heute ${fmtWeight(Math.abs(diff))} g unter deinem 7-Tage-Schnitt.`);
+    }
+    if (kcalAvg > 0) {
+      const diff = kcalToday - kcalAvg;
+      parts.push(diff >= 0
+        ? `Kalorien liegen ${Math.round(Math.abs(diff))} kcal über dem Schnitt.`
+        : `Kalorien liegen ${Math.round(Math.abs(diff))} kcal unter dem Schnitt.`);
+    }
+    return parts.length ? parts.join(" ") : "Noch nicht genug Verlauf für eine Analyse.";
+  }
+
+  function renderNutrition() {
+    if (nutritionDetailMacro) {
+      $("#nutrition-overview").classList.add("hidden");
+      $("#nutrition-detail").classList.remove("hidden");
+      renderMacroDetail(nutritionDetailMacro);
+    } else {
+      $("#nutrition-overview").classList.remove("hidden");
+      $("#nutrition-detail").classList.add("hidden");
+      renderNutritionOverview();
+    }
+  }
+
+  function openMacroDetail(macro) { nutritionDetailMacro = macro; renderNutrition(); }
+  function closeMacroDetail() { nutritionDetailMacro = null; renderNutrition(); }
+
+  function renderNutritionOverview() {
+    const d = todayStr();
+    const kcal = macroValueForDate("calories", d);
+    const protein = macroValueForDate("protein", d);
+    const carbs = macroValueForDate("carbs", d);
+    const fat = macroValueForDate("fat", d);
+    const kcalGoal = state.settings.calorieGoal;
+
+    $("#calorie-hero-label").textContent = `${Math.round(kcal)} / ${Math.round(kcalGoal)} kcal`;
+    const bar = $("#calorie-bar");
+    bar.innerHTML = "";
+    const segs = 4;
+    const pct = kcalGoal ? Math.min(1, kcal / kcalGoal) : 0;
+    const filledSegs = Math.round(pct * segs);
+    for (let i = 0; i < segs; i++) {
+      const seg = document.createElement("span");
+      seg.className = "progress-seg" + (i < filledSegs ? " filled" : "");
+      bar.appendChild(seg);
+    }
+
+    $("#macro-protein-current").textContent = Math.round(protein);
+    $("#macro-protein-goal").textContent = Math.round(state.settings.proteinGoal);
+    $("#macro-carbs-current").textContent = Math.round(carbs);
+    $("#macro-carbs-goal").textContent = Math.round(state.settings.carbsGoal);
+    $("#macro-fat-current").textContent = Math.round(fat);
+    $("#macro-fat-goal").textContent = Math.round(state.settings.fatGoal);
+
+    $("#nutrition-analysis-text").textContent = buildNutritionAnalysisText();
+  }
+
+  function renderMacroDetail(macro) {
+    const cfg = MACRO_CONFIG[macro];
+    const d = todayStr();
+    const current = macroValueForDate(macro, d);
+    const goal = state.settings[cfg.goalKey];
+
+    $("#nutrition-detail-label").textContent = `${cfg.label} heute`;
+    $("#nutrition-detail-current").textContent = Math.round(current);
+    $("#nutrition-detail-goal").textContent = Math.round(goal);
+    $("#nutrition-detail-unit").textContent = cfg.unit;
+    const remaining = goal - current;
+    $("#nutrition-detail-remaining").textContent = remaining > 0 ? `noch ${Math.round(remaining)} ${cfg.unit} bis zum Ziel` : "Ziel erreicht";
+    $("#nutrition-quick-add").classList.toggle("hidden", !cfg.showQuickAdd);
+
+    drawRing($("#nutrition-ring"), current, goal);
+    drawSmoothChart($("#nutrition-history-chart"), macroHistoryLast14(macro), 100);
+
+    const rows = macroEntriesForDate(macro, d);
+    $("#nutrition-log-toggle-label").textContent = `${rows.length} Eintr${rows.length === 1 ? "ag" : "äge"} heute`;
+    const list = $("#nutrition-log-list");
+    list.innerHTML = "";
+    if (!rows.length) {
+      list.innerHTML = `<p class="muted small">Heute noch nichts erfasst.</p>`;
+    } else {
+      rows.forEach((row) => {
+        const el = document.createElement("div");
+        el.className = "protein-entry";
+        el.innerHTML = `<span>${row.time || ""} · ${row.label}</span><span>${row.valueText}</span><button class="icon-btn" aria-label="Eintrag löschen" style="width:26px;height:26px;font-size:12px;">×</button>`;
+        el.querySelector("button").addEventListener("click", () => deleteMacroEntry(row));
+        list.appendChild(el);
+      });
+    }
   }
 
   async function addProtein(amount) {
@@ -946,7 +1093,118 @@
     if (error) { showError(error.message); return; }
     const day = todayProteinEntry();
     day.entries.push({ id: data.id, amount: Number(data.amount), time: data.entry_time });
-    renderProtein();
+    renderNutrition();
+  }
+
+  /* ================= food search (Open Food Facts) ================= */
+  function onAddMeal() {
+    openModal(`
+      <h3>Mahlzeit hinzufügen</h3>
+      <input id="food-search-input" type="text" placeholder="z. B. Buttertoast" autocomplete="off" />
+      <div id="food-search-results"></div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="modal-cancel">Abbrechen</button>
+      </div>
+    `);
+    $("#modal-cancel").addEventListener("click", closeModal);
+    const input = $("#food-search-input");
+    let debounceTimer;
+    input.addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      const q = input.value.trim();
+      if (q.length < 2) { $("#food-search-results").innerHTML = ""; return; }
+      debounceTimer = setTimeout(() => searchFoods(q), 400);
+    });
+    input.focus();
+  }
+
+  async function searchFoods(query) {
+    const results = $("#food-search-results");
+    if (!results) return;
+    results.innerHTML = `<p class="muted small">Suche …</p>`;
+    try {
+      const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&page_size=15&fields=code,product_name,brands,serving_size,serving_quantity,nutriments`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const products = (data.products || []).filter((p) => p.product_name);
+      if (!results.isConnected) return;
+      if (!products.length) { results.innerHTML = `<p class="muted small">Keine Ergebnisse gefunden.</p>`; return; }
+      results.innerHTML = "";
+      products.forEach((p) => {
+        const n = p.nutriments || {};
+        const kcal = n["energy-kcal_100g"];
+        const row = document.createElement("div");
+        row.className = "food-result-row";
+        row.innerHTML = `
+          <div>
+            <p class="food-result-name">${p.product_name}</p>
+            <p class="muted small">${p.brands || ""}${p.serving_size ? " · " + p.serving_size : ""}</p>
+          </div>
+          <span class="muted small">${kcal ? Math.round(kcal) + " kcal/100g" : ""}</span>
+        `;
+        row.addEventListener("click", () => openQuantityStep(p));
+        results.appendChild(row);
+      });
+    } catch (e) {
+      if (results.isConnected) results.innerHTML = `<p class="muted small">Keine Verbindung zur Lebensmittel-Datenbank.</p>`;
+    }
+  }
+
+  function openQuantityStep(product) {
+    const n = product.nutriments || {};
+    const kcal100 = Number(n["energy-kcal_100g"]) || 0;
+    const protein100 = Number(n["proteins_100g"]) || 0;
+    const carbs100 = Number(n["carbohydrates_100g"]) || 0;
+    const fat100 = Number(n["fat_100g"]) || 0;
+    const servingGrams = Number(product.serving_quantity) || null;
+    const servingLabel = product.serving_size || null;
+    const useServing = !!servingGrams;
+
+    openModal(`
+      <h3>${product.product_name}</h3>
+      <p class="muted small" style="margin-top:-8px;">${product.brands || ""}</p>
+      <label style="font-size:12.5px;color:var(--text-secondary);display:block;margin:10px 0 6px;">
+        ${useServing ? `Menge in Portionen (1 Portion = ${servingLabel || servingGrams + " g"})` : "Menge in Gramm"}
+      </label>
+      <input id="qty-input" type="text" inputmode="decimal" value="1" placeholder="${useServing ? "z. B. 0,75" : "z. B. 100"}" />
+      <div class="modal-actions">
+        <button class="ghost-btn" id="modal-cancel">Abbrechen</button>
+        <button class="primary-btn" id="modal-save">Hinzufügen</button>
+      </div>
+    `);
+    $("#modal-cancel").addEventListener("click", closeModal);
+    $("#modal-save").addEventListener("click", async () => {
+      const qty = parseNum($("#qty-input").value);
+      if (!qty) return;
+      const grams = useServing ? qty * servingGrams : qty;
+      const factor = grams / 100;
+      const payload = {
+        user_id: currentUser.id,
+        date: todayStr(),
+        food_name: product.product_name,
+        brand: product.brands || null,
+        quantity: qty,
+        quantity_unit: useServing ? "serving" : "g",
+        serving_label: servingLabel,
+        grams,
+        calories: Math.round(kcal100 * factor),
+        protein: Math.round(protein100 * factor * 10) / 10,
+        carbs: Math.round(carbs100 * factor * 10) / 10,
+        fat: Math.round(fat100 * factor * 10) / 10,
+        entry_time: new Date().toTimeString().slice(0, 5),
+        source: "openfoodfacts"
+      };
+      const { data, error } = await sb.from("nutrition_entries").insert(payload).select().single();
+      if (error) { showError(error.message); return; }
+      state.nutrition.push({
+        id: data.id, date: payload.date, foodName: payload.food_name, brand: payload.brand,
+        quantity: payload.quantity, quantityUnit: payload.quantity_unit, servingLabel: payload.serving_label,
+        grams: payload.grams, calories: payload.calories, protein: payload.protein, carbs: payload.carbs, fat: payload.fat,
+        time: payload.entry_time
+      });
+      closeModal();
+      renderNutrition();
+    });
   }
 
   /* ================= bodyweight ================= */
@@ -1031,7 +1289,7 @@
     openModal(`
       <h3>Menü</h3>
       <div class="modal-actions" style="flex-direction:column;">
-        <button class="ghost-btn full" id="m-goal">Eiweiß-Ziel ändern</button>
+        <button class="ghost-btn full" id="m-goal">Ernährungsziele ändern</button>
         <button class="ghost-btn full" id="m-export-csv">Trainingsdaten als CSV exportieren</button>
         <button class="ghost-btn full" id="m-delete-split">Aktuellen Split löschen</button>
         <button class="ghost-btn full" id="m-signout">Abmelden</button>
@@ -1041,8 +1299,15 @@
     $("#m-close").addEventListener("click", closeModal);
     $("#m-goal").addEventListener("click", () => {
       openModal(`
-        <h3>Eiweiß-Ziel</h3>
-        <input id="goal-input" type="text" inputmode="numeric" value="${state.settings.proteinGoal}" />
+        <h3>Ernährungsziele</h3>
+        <label style="font-size:12.5px;color:var(--text-secondary);">Kalorien (kcal)</label>
+        <input id="goal-kcal-input" type="text" inputmode="numeric" value="${state.settings.calorieGoal}" />
+        <label style="font-size:12.5px;color:var(--text-secondary);">Protein (g)</label>
+        <input id="goal-protein-input" type="text" inputmode="numeric" value="${state.settings.proteinGoal}" />
+        <label style="font-size:12.5px;color:var(--text-secondary);">Carbs (g)</label>
+        <input id="goal-carbs-input" type="text" inputmode="numeric" value="${state.settings.carbsGoal}" />
+        <label style="font-size:12.5px;color:var(--text-secondary);">Fett (g)</label>
+        <input id="goal-fat-input" type="text" inputmode="numeric" value="${state.settings.fatGoal}" />
         <div class="modal-actions">
           <button class="ghost-btn" id="modal-cancel">Abbrechen</button>
           <button class="primary-btn" id="modal-save">Speichern</button>
@@ -1050,14 +1315,21 @@
       `);
       $("#modal-cancel").addEventListener("click", closeModal);
       $("#modal-save").addEventListener("click", async () => {
-        const v = parseNum($("#goal-input").value);
-        if (!v) return;
-        const { error } = await sb.from("user_settings")
-          .upsert({ user_id: currentUser.id, protein_goal: v }, { onConflict: "user_id" });
+        const kcal = parseNum($("#goal-kcal-input").value);
+        const protein = parseNum($("#goal-protein-input").value);
+        const carbs = parseNum($("#goal-carbs-input").value);
+        const fat = parseNum($("#goal-fat-input").value);
+        if (!kcal || !protein || !carbs || !fat) return;
+        const { error } = await sb.from("user_settings").upsert({
+          user_id: currentUser.id, calorie_goal: kcal, protein_goal: protein, carbs_goal: carbs, fat_goal: fat
+        }, { onConflict: "user_id" });
         if (error) { showError(error.message); return; }
-        state.settings.proteinGoal = v;
+        state.settings.calorieGoal = kcal;
+        state.settings.proteinGoal = protein;
+        state.settings.carbsGoal = carbs;
+        state.settings.fatGoal = fat;
         closeModal();
-        renderProtein();
+        renderNutrition();
       });
     });
     $("#m-export-csv").addEventListener("click", exportCsv);
@@ -1102,7 +1374,7 @@
     if (VIEW_TITLES[view]) $("#page-title").textContent = VIEW_TITLES[view];
     if (view === "workout") renderExerciseList();
     if (view === "dashboard") renderDashboard();
-    if (view === "protein") renderProtein();
+    if (view === "protein") { nutritionDetailMacro = null; renderNutrition(); }
     if (view === "weight") renderWeight();
   }
 
@@ -1148,11 +1420,15 @@
       $("#details-toggle-label").textContent = expanded ? "Details ausblenden" : "Details anzeigen";
     });
     $$("#trend-pr-tabs .seg-btn").forEach((btn) => btn.addEventListener("click", () => setDashboardTab(btn.dataset.tab)));
-    $("#protein-log-toggle-btn").addEventListener("click", () => {
-      const list = $("#protein-log-list");
+    $("#nutrition-log-toggle-btn").addEventListener("click", () => {
+      const list = $("#nutrition-log-list");
       const expanded = list.classList.toggle("hidden") === false;
-      $("#protein-log-toggle-arrow").textContent = expanded ? "ausblenden ‹" : "anzeigen ›";
+      $("#nutrition-log-toggle-arrow").textContent = expanded ? "ausblenden ‹" : "anzeigen ›";
     });
+    $$(".macro-block").forEach((el) => el.addEventListener("click", () => openMacroDetail(el.dataset.macro)));
+    $("#calorie-hero-card").addEventListener("click", () => openMacroDetail("calories"));
+    $("#nutrition-back-btn").addEventListener("click", closeMacroDetail);
+    $("#add-meal-btn").addEventListener("click", onAddMeal);
 
     setupServiceWorker();
   }

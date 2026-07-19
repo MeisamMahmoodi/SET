@@ -118,6 +118,27 @@ html, body {
 .exercise-card-footer .add-set-btn { width: auto; margin: 0; padding: 9px 14px; }
 .primary-btn.small { padding: 9px 16px; font-size: 12.5px; }
 
+.nutrition-hero .wp-label { font-size: 20px; font-weight: 700; opacity: 1; margin: 0 0 10px; }
+.nutrition-hero .wp-bar { margin-bottom: 0; }
+
+.macro-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.macro-block { padding: 12px; margin-bottom: 0; cursor: pointer; }
+.macro-block:active { transform: scale(0.98); }
+.macro-num { font-size: 15px; font-weight: 700; margin: 6px 0 0; }
+.macro-num .muted { font-weight: 400; }
+
+.food-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 0.5px solid var(--line-strong);
+  cursor: pointer;
+}
+.food-result-row:first-child { border-top: none; }
+.food-result-name { font-size: 13px; font-weight: 600; margin: 0; }
+
 .exercise-card { margin-bottom: 14px; }
 .exercise-head {
   display: flex;
@@ -323,7 +344,7 @@ select {
 }
 
 canvas { display: block; width: 100%; }
-#protein-ring { width: 72px; height: 72px; flex-shrink: 0; }
+#nutrition-ring { width: 72px; height: 72px; flex-shrink: 0; }
 
 .hero-chart-card { padding-bottom: 6px; }
 .hero-select {
