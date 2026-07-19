@@ -1184,13 +1184,21 @@
     // and the cancel button is always reachable regardless of how many results come back.
     openModal(`
       <h3>Mahlzeit hinzufügen</h3>
-      <input id="food-search-input" type="text" placeholder="z. B. Buttertoast" autocomplete="off" />
+      <div class="food-search-row">
+        <input id="food-search-input" type="text" placeholder="z. B. Buttertoast" autocomplete="off" style="margin-bottom:0;" />
+        <button type="button" class="barcode-btn" id="barcode-scan-btn" aria-label="Barcode scannen">▤</button>
+        <button type="button" class="barcode-btn" id="photo-scan-btn" aria-label="Foto scannen">📷</button>
+        <button type="button" class="barcode-btn" id="ai-text-btn" aria-label="Beschreibung schätzen lassen">✨</button>
+      </div>
       <div id="food-search-results" class="modal-scroll-body"></div>
       <div class="modal-actions">
         <button class="ghost-btn" id="modal-cancel">Abbrechen</button>
       </div>
     `, "modal-sheet-scroll");
     $("#modal-cancel").addEventListener("click", closeModal);
+    $("#barcode-scan-btn").addEventListener("click", openBarcodeScanner);
+    $("#photo-scan-btn").addEventListener("click", openPhotoScanner);
+    $("#ai-text-btn").addEventListener("click", openAiTextEntry);
     const input = $("#food-search-input");
     let debounceTimer;
     input.addEventListener("input", () => {
@@ -1320,6 +1328,255 @@
       `;
       row.addEventListener("click", () => openQuantityStep({ ...p, product_name: p._name }));
       results.appendChild(row);
+    });
+  }
+
+  // Looks up one product by exact barcode via OFF's product endpoint (not the fuzzy search
+  // endpoint) - a barcode is an exact key, so this skips all the relevance-filtering hacks
+  // searchFoods() needs and just returns the one matching product (or none).
+  async function fetchProductByBarcode(code) {
+    const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=code,product_name,product_name_de,brands,serving_size,serving_quantity,nutriments`;
+    const data = await fetchJsonOrThrow(url);
+    if (!data || data.status !== 1 || !data.product) return null;
+    const p = data.product;
+    if (!hasRealNutrition(p)) return null;
+    return { ...p, product_name: pickFoodName(p) || p.product_name || code };
+  }
+
+  // Active camera stream while the barcode scanner modal is open, so closeModal() (which can be
+  // triggered by the backdrop tap, not just the Abbrechen button) always has a handle to stop it.
+  let activeScannerStream = null;
+  function stopActiveScanner() {
+    if (activeScannerStream) {
+      activeScannerStream.getTracks().forEach((t) => t.stop());
+      activeScannerStream = null;
+    }
+  }
+
+  async function openBarcodeScanner() {
+    const supported = "BarcodeDetector" in window;
+    openModal(`
+      <h3>Barcode scannen</h3>
+      ${supported ? `
+        <div class="scanner-viewport">
+          <video id="scanner-video" playsinline muted></video>
+          <div class="scanner-frame"></div>
+        </div>
+        <p class="muted small scanner-status" id="scanner-status">Barcode ins Bild halten …</p>
+      ` : `
+        <p class="muted small" style="margin-bottom:10px;">
+          Dein Browser unterstützt keinen Kamera-Scan. Trag die Zahlen unter dem Barcode manuell ein:
+        </p>
+        <input id="barcode-manual-input" type="text" inputmode="numeric" placeholder="z. B. 4000417025005" autocomplete="off" />
+      `}
+      <div id="scanner-result" class="muted small"></div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="modal-cancel">Abbrechen</button>
+        ${supported ? "" : `<button class="primary-btn" id="barcode-manual-submit">Suchen</button>`}
+      </div>
+    `);
+    $("#modal-cancel").addEventListener("click", closeModal);
+
+    async function handleCode(code) {
+      stopActiveScanner();
+      const status = $("#scanner-result");
+      if (status) status.textContent = "Suche Produkt …";
+      try {
+        const product = await fetchProductByBarcode(code);
+        if (!product) {
+          if (status) status.textContent = "Kein Treffer für diesen Barcode. Du kannst das Produkt oben per Namen suchen oder manuell hinzufügen.";
+          return;
+        }
+        openQuantityStep(product);
+      } catch (e) {
+        if (status) status.textContent = "Suche fehlgeschlagen. Prüf deine Verbindung und versuch's nochmal.";
+      }
+    }
+
+    if (!supported) {
+      $("#barcode-manual-submit").addEventListener("click", () => {
+        const code = $("#barcode-manual-input").value.trim();
+        if (code.length >= 6) handleCode(code);
+      });
+      requestAnimationFrame(() => $("#barcode-manual-input").focus({ preventScroll: true }));
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      activeScannerStream = stream;
+      const video = $("#scanner-video");
+      video.srcObject = stream;
+      await video.play();
+      const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
+      let stopped = false;
+      (async function scanLoop() {
+        while (!stopped && activeScannerStream) {
+          try {
+            const codes = await detector.detect(video);
+            if (codes.length) {
+              stopped = true;
+              handleCode(codes[0].rawValue);
+              return;
+            }
+          } catch (e) { /* transient frame decode errors are expected, keep looping */ }
+          await new Promise((r) => requestAnimationFrame(r));
+        }
+      })();
+    } catch (e) {
+      const status = $("#scanner-result");
+      if (status) status.textContent = "Kein Kamera-Zugriff. Bitte in den Browser-/App-Einstellungen erlauben.";
+    }
+  }
+
+  async function openAiTextEntry() {
+    openModal(`
+      <h3>Beschreibung schätzen lassen</h3>
+      <input id="ai-text-input" type="text" placeholder="z. B. 2 Scheiben Vollkornbrot mit Butter" autocomplete="off" />
+      <p class="muted small" id="ai-text-status"></p>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="modal-cancel">Abbrechen</button>
+        <button class="primary-btn" id="ai-text-submit">Schätzen</button>
+      </div>
+    `);
+    $("#modal-cancel").addEventListener("click", closeModal);
+    requestAnimationFrame(() => $("#ai-text-input").focus({ preventScroll: true }));
+
+    async function submit() {
+      const text = $("#ai-text-input").value.trim();
+      if (text.length < 3) return;
+      const status = $("#ai-text-status");
+      const btn = $("#ai-text-submit");
+      status.textContent = "Schätze …";
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/analyze-food", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        const result = await res.json();
+        if (!res.ok || result.error) {
+          status.textContent = result.error === "no_food_detected"
+            ? "Konnte daraus kein Essen erkennen. Versuch's genauer zu beschreiben."
+            : "Schätzung fehlgeschlagen. Versuch's nochmal.";
+          btn.disabled = false;
+          return;
+        }
+        openAiEstimateStep(result, "ai_text");
+      } catch (e) {
+        status.textContent = "Fehler. Prüf deine Verbindung.";
+        btn.disabled = false;
+      }
+    }
+    $("#ai-text-submit").addEventListener("click", submit);
+    $("#ai-text-input").addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const [prefix, base64] = String(reader.result).split(",");
+        const mediaType = (prefix.match(/data:(.*);base64/) || [])[1] || file.type || "image/jpeg";
+        resolve({ base64, mediaType });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Uses a plain file input with capture="environment" instead of a live getUserMedia preview
+  // (like the barcode scanner) - for a single photo shot the native camera app is more reliable
+  // across iOS/Android quirks than rolling our own capture UI, and needs way less code.
+  function openPhotoScanner() {
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.capture = "environment";
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (file) handlePhotoFile(file);
+    });
+    fileInput.click();
+  }
+
+  async function handlePhotoFile(file) {
+    openModal(`
+      <h3>Foto wird analysiert …</h3>
+      <p class="muted small" id="photo-status">Einen Moment …</p>
+    `);
+    try {
+      const { base64, mediaType } = await fileToBase64(file);
+      const res = await fetch("/api/analyze-food", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64, mediaType })
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        const status = $("#photo-status");
+        if (status) status.textContent = result.error === "no_food_detected"
+          ? "Kein Essen im Bild erkannt. Versuch's mit einem anderen Foto."
+          : "Analyse fehlgeschlagen. Versuch's nochmal.";
+        return;
+      }
+      openAiEstimateStep(result, "ai_photo");
+    } catch (e) {
+      const status = $("#photo-status");
+      if (status) status.textContent = "Fehler bei der Analyse. Prüf deine Verbindung.";
+    }
+  }
+
+  // Shared editable review step for anything that produces an absolute (not per-100g) estimate -
+  // used by both the photo scanner and (later) the AI text entry. Unlike openQuantityStep, there's
+  // no "per 100g × factor" scaling here: the AI already estimated the actual portion, so all
+  // fields are directly editable numbers the user corrects before saving.
+  function openAiEstimateStep(estimate, source) {
+    openModal(`
+      <h3>Geschätzte Mahlzeit</h3>
+      <p class="muted small" style="margin-top:-8px;">KI-Schätzung – bitte prüfen und ggf. korrigieren</p>
+      <input id="ai-food-name" type="text" value="${(estimate.food_name || "").replace(/"/g, "&quot;")}" placeholder="Name" />
+      <div class="ai-estimate-grid">
+        <label>Gramm<input id="ai-grams" type="number" inputmode="decimal" value="${Math.round(estimate.grams || 0)}" /></label>
+        <label>kcal<input id="ai-calories" type="number" inputmode="decimal" value="${Math.round(estimate.calories || 0)}" /></label>
+        <label>Protein (g)<input id="ai-protein" type="number" inputmode="decimal" value="${estimate.protein || 0}" /></label>
+        <label>Carbs (g)<input id="ai-carbs" type="number" inputmode="decimal" value="${estimate.carbs || 0}" /></label>
+        <label>Fett (g)<input id="ai-fat" type="number" inputmode="decimal" value="${estimate.fat || 0}" /></label>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="modal-cancel">Abbrechen</button>
+        <button class="primary-btn" id="modal-save">Hinzufügen</button>
+      </div>
+    `);
+    $("#modal-cancel").addEventListener("click", closeModal);
+    $("#modal-save").addEventListener("click", async () => {
+      const payload = {
+        user_id: currentUser.id,
+        date: nutritionSelectedDate || todayStr(),
+        food_name: $("#ai-food-name").value.trim() || "Mahlzeit",
+        brand: null,
+        quantity: 1,
+        quantity_unit: "portion",
+        serving_label: null,
+        grams: Number($("#ai-grams").value) || null,
+        calories: Math.round(Number($("#ai-calories").value) || 0),
+        protein: Math.round((Number($("#ai-protein").value) || 0) * 10) / 10,
+        carbs: Math.round((Number($("#ai-carbs").value) || 0) * 10) / 10,
+        fat: Math.round((Number($("#ai-fat").value) || 0) * 10) / 10,
+        entry_time: new Date().toTimeString().slice(0, 5),
+        source
+      };
+      const { data, error } = await sb.from("nutrition_entries").insert(payload).select().single();
+      if (error) { showError(error.message); return; }
+      state.nutrition.push({
+        id: data.id, date: payload.date, foodName: payload.food_name, brand: payload.brand,
+        quantity: payload.quantity, quantityUnit: payload.quantity_unit, servingLabel: payload.serving_label,
+        grams: payload.grams, calories: payload.calories, protein: payload.protein, carbs: payload.carbs, fat: payload.fat,
+        time: payload.entry_time
+      });
+      closeModal();
+      renderNutrition();
     });
   }
 
@@ -1583,6 +1840,7 @@
     }
   }
   function closeModal() {
+    stopActiveScanner();
     $("#modal-root").innerHTML = "";
     unlockBodyScroll();
     if (window.visualViewport) {
@@ -1670,12 +1928,51 @@
   }
 
   /* ================= view switching ================= */
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Moves the liquid-blob indicator behind the newly active tab. Instead of a plain slide, it
+  // squashes/stretches toward the travel direction and overshoots slightly before settling - the
+  // "liquid" feel comes from treating width and border-radius as part of the same motion as
+  // position, not just translating a static pill.
+  let blobX = null, blobAnim = null;
+  function moveLiquidBlob(btn) {
+    const nav = $("#bottom-nav");
+    const blob = $("#liquid-blob");
+    if (!nav || !blob || !btn) return;
+    const navRect = nav.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    const targetX = btnRect.left - navRect.left + (btnRect.width - 64) / 2;
+    const targetW = 64;
+
+    if (blobX === null || reduceMotion) {
+      blob.style.transform = `translateX(${targetX}px)`;
+      blob.style.width = targetW + "px";
+      blobX = targetX;
+      return;
+    }
+
+    const dir = targetX > blobX ? 1 : -1;
+    const dist = Math.abs(targetX - blobX);
+    const stretch = Math.min(1.5, 1 + dist / 260); // farther travel -> more stretch, capped
+
+    if (blobAnim) blobAnim.cancel();
+    blobAnim = blob.animate([
+      { transform: `translateX(${blobX}px) scaleX(1)`, borderRadius: "20px", offset: 0 },
+      { transform: `translateX(${blobX + (targetX - blobX) * 0.5 + dir * 6}px) scaleX(${stretch})`, borderRadius: "26px", offset: 0.45 },
+      { transform: `translateX(${targetX}px) scaleX(0.94)`, borderRadius: "18px", offset: 0.78 },
+      { transform: `translateX(${targetX}px) scaleX(1)`, borderRadius: "20px", offset: 1 }
+    ], { duration: 480, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" });
+    blobAnim.onfinish = () => { blob.style.transform = `translateX(${targetX}px)`; blob.style.width = targetW + "px"; };
+    blobX = targetX;
+  }
+
   function switchView(view) {
     currentView = view;
     ["workout", "dashboard", "protein", "weight"].forEach((v) => {
       $("#view-" + v).classList.toggle("hidden", v !== view);
     });
     $$("#bottom-nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+    moveLiquidBlob($(`#bottom-nav button[data-view="${view}"]`));
     $("#split-tabs").classList.toggle("hidden", view !== "workout");
     if (VIEW_TITLES[view]) $("#page-title").textContent = VIEW_TITLES[view];
     if (view === "workout") renderExerciseList();
@@ -1691,6 +1988,14 @@
     if (appInited) return;
     appInited = true;
     $$("#bottom-nav button").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+    let resizeTimer;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        blobX = null; // skip the travel animation, just snap to the correct spot
+        moveLiquidBlob($(`#bottom-nav button[data-view="${currentView}"]`));
+      }, 150);
+    });
     $("#add-exercise-btn").addEventListener("click", onAddExercise);
     $("#repeat-last-btn").addEventListener("click", onRepeatLast);
     $("#empty-add-split-btn").addEventListener("click", onAddSplit);
