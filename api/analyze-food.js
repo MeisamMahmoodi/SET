@@ -66,8 +66,9 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     const textOut = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const finishReason = data.candidates?.[0]?.finishReason;
     if (!textOut) {
-      res.status(502).json({ error: "empty_ai_response" });
+      res.status(502).json({ error: "empty_ai_response", detail: `finishReason: ${finishReason || "unknown"}` });
       return;
     }
 
@@ -75,7 +76,22 @@ export default async function handler(req, res) {
     try {
       parsed = JSON.parse(textOut.trim());
     } catch (e) {
-      res.status(502).json({ error: "unparseable_ai_response" });
+      // Fall back for cases where the model still wraps the JSON in ```json fences or adds
+      // stray text around it despite responseMimeType - strip fences, then grab the first
+      // {...} block as a last resort before giving up.
+      try {
+        const stripped = textOut.replace(/```json|```/g, "").trim();
+        parsed = JSON.parse(stripped);
+      } catch (e2) {
+        const match = textOut.match(/\{[\s\S]*\}/);
+        if (match) {
+          try { parsed = JSON.parse(match[0]); } catch (e3) { /* give up below */ }
+        }
+      }
+    }
+
+    if (!parsed) {
+      res.status(502).json({ error: "unparseable_ai_response", detail: textOut.slice(0, 500) });
       return;
     }
 
