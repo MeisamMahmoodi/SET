@@ -509,6 +509,36 @@ canvas { display: block; width: 100%; }
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+.qty-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.qty-chip {
+  border: none;
+  background: var(--card);
+  color: var(--text);
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.qty-chip.active { background: var(--text); color: var(--bg); }
+.qty-slider {
+  width: 100%;
+  margin: 4px 0 14px;
+  accent-color: var(--text);
+}
+.qty-readout-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.qty-readout-row input {
+  width: 90px;
+  flex: none;
+  margin-bottom: 0;
+  text-align: center;
+}
+.qty-readout-row .muted.small { flex: 1; text-align: right; }
 .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
 .modal-actions button { flex: 1; }
 .primary-btn {

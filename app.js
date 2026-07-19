@@ -1234,6 +1234,16 @@
     });
   }
 
+  // Portion presets render as fractions where there's a clean one, otherwise as a plain number.
+  function fmtQtyValue(v) {
+    const fracMap = { 0.25: "¼", 0.5: "½", 0.75: "¾" };
+    const whole = Math.floor(v);
+    const frac = Math.round((v - whole) * 100) / 100;
+    if (whole > 0 && fracMap[frac]) return whole + fracMap[frac];
+    if (whole === 0 && fracMap[frac]) return fracMap[frac];
+    return String(v).replace(".", ",");
+  }
+
   function openQuantityStep(product) {
     const n = product.nutriments || {};
     const kcal100 = Number(n["energy-kcal_100g"]) || 0;
@@ -1242,34 +1252,108 @@
     const fat100 = Number(n["fat_100g"]) || 0;
     const servingGrams = Number(product.serving_quantity) || null;
     const servingLabel = product.serving_size || null;
-    const useServing = !!servingGrams;
+
+    // Units offered: "Portion" only when the product actually has a known serving size, "Gramm"
+    // always (for precise entry), plus Esslöffel/Teelöffel as everyday kitchen measures using the
+    // standard rough conversion (1 EL ≈ 15 g, 1 TL ≈ 5 g) - good enough for spreads, oil, sauces etc.
+    // Left out: mg (too fine-grained to matter for whole foods) and ml (would need product density
+    // to convert to grams, which OFF doesn't reliably provide - "g" covers the same need well enough).
+    const UNITS = {
+      ...(servingGrams ? { portion: {
+        label: servingLabel ? `1 Portion = ${servingLabel}` : `1 Portion = ${servingGrams} g`,
+        short: "Portion", gramsPer: servingGrams,
+        presets: [0.25, 0.5, 0.75, 1, 1.5, 2, 3], min: 0.25, max: 5, step: 0.25
+      } } : {}),
+      g: { label: "in Gramm", short: "g", gramsPer: 1, presets: [50, 100, 150, 200, 250, 300], min: 10, max: 500, step: 10 },
+      el: { label: "1 Esslöffel ≈ 15 g", short: "EL", gramsPer: 15, presets: [1, 2, 3, 4], min: 1, max: 10, step: 1 },
+      tl: { label: "1 Teelöffel ≈ 5 g", short: "TL", gramsPer: 5, presets: [1, 2, 3, 4], min: 1, max: 10, step: 1 }
+    };
+    let unit = servingGrams ? "portion" : "g";
+    let qty = 1;
 
     openModal(`
       <h3>${product.product_name}</h3>
       <p class="muted small" style="margin-top:-8px;">${product.brands || ""}</p>
-      <label style="font-size:12.5px;color:var(--text-secondary);display:block;margin:10px 0 6px;">
-        ${useServing ? `Menge in Portionen (1 Portion = ${servingLabel || servingGrams + " g"})` : "Menge in Gramm"}
-      </label>
-      <input id="qty-input" type="text" inputmode="decimal" value="1" placeholder="${useServing ? "z. B. 0,75" : "z. B. 100"}" />
+      <div class="segmented" id="qty-unit-tabs">
+        ${Object.keys(UNITS).map((u) => `<button class="seg-btn${u === unit ? " active" : ""}" data-unit="${u}">${UNITS[u].short}</button>`).join("")}
+      </div>
+      <p class="muted small" id="qty-unit-hint" style="margin:8px 0 0;"></p>
+      <div class="qty-chips" id="qty-chips"></div>
+      <input id="qty-slider" type="range" class="qty-slider" />
+      <div class="qty-readout-row">
+        <input id="qty-input" type="text" inputmode="decimal" />
+        <span class="muted small" id="qty-result-hint"></span>
+      </div>
       <div class="modal-actions">
         <button class="ghost-btn" id="modal-cancel">Abbrechen</button>
         <button class="primary-btn" id="modal-save">Hinzufügen</button>
       </div>
     `);
+
+    function clampToUnit(u, v) {
+      const cfg = UNITS[u];
+      return Math.min(cfg.max, Math.max(cfg.min, v));
+    }
+
+    function render() {
+      const cfg = UNITS[unit];
+      const grams = cfg.gramsPer * qty;
+      const factor = grams / 100;
+      $("#qty-unit-hint").textContent = cfg.label;
+      $("#qty-chips").innerHTML = cfg.presets.map((v) =>
+        `<button type="button" class="qty-chip${Math.abs(v - qty) < 0.001 ? " active" : ""}" data-value="${v}">${fmtQtyValue(v)}</button>`
+      ).join("");
+      const slider = $("#qty-slider");
+      slider.min = cfg.min; slider.max = cfg.max; slider.step = cfg.step; slider.value = qty;
+      $("#qty-input").value = String(qty).replace(".", ",");
+      $("#qty-result-hint").textContent = `= ${Math.round(grams)} g · ${Math.round(kcal100 * factor)} kcal`;
+      $$(".qty-chip").forEach((btn) => btn.addEventListener("click", () => {
+        qty = Number(btn.dataset.value);
+        render();
+      }));
+    }
+    render();
+
+    $("#qty-unit-tabs").addEventListener("click", (e) => {
+      const btn = e.target.closest(".seg-btn");
+      if (!btn) return;
+      unit = btn.dataset.unit;
+      $$("#qty-unit-tabs .seg-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      qty = clampToUnit(unit, UNITS[unit].presets.includes(1) ? 1 : UNITS[unit].presets[0]);
+      render();
+    });
+    $("#qty-slider").addEventListener("input", (e) => {
+      qty = Number(e.target.value);
+      render();
+    });
+    $("#qty-input").addEventListener("input", () => {
+      const v = parseNum($("#qty-input").value);
+      if (v === null || v <= 0) return;
+      qty = v;
+      const cfg = UNITS[unit];
+      const grams = cfg.gramsPer * qty;
+      const factor = grams / 100;
+      $("#qty-result-hint").textContent = `= ${Math.round(grams)} g · ${Math.round(kcal100 * factor)} kcal`;
+      const slider = $("#qty-slider");
+      slider.value = Math.min(Number(slider.max), Math.max(Number(slider.min), qty));
+      $("#qty-chips").querySelectorAll(".qty-chip").forEach((btn) => btn.classList.toggle("active", Math.abs(Number(btn.dataset.value) - qty) < 0.001));
+    });
+
     $("#modal-cancel").addEventListener("click", closeModal);
     $("#modal-save").addEventListener("click", async () => {
-      const qty = parseNum($("#qty-input").value);
-      if (!qty) return;
-      const grams = useServing ? qty * servingGrams : qty;
+      const finalQty = parseNum($("#qty-input").value);
+      if (!finalQty || finalQty <= 0) return;
+      const cfg = UNITS[unit];
+      const grams = cfg.gramsPer * finalQty;
       const factor = grams / 100;
       const payload = {
         user_id: currentUser.id,
         date: todayStr(),
         food_name: product.product_name,
         brand: product.brands || null,
-        quantity: qty,
-        quantity_unit: useServing ? "serving" : "g",
-        serving_label: servingLabel,
+        quantity: finalQty,
+        quantity_unit: unit,
+        serving_label: unit === "portion" ? servingLabel : null,
         grams,
         calories: Math.round(kcal100 * factor),
         protein: Math.round(protein100 * factor * 10) / 10,
