@@ -481,13 +481,27 @@ canvas { display: block; width: 100%; }
   font-size: 16px; /* iOS zooms the whole page in on focus if an input's font-size is below 16px */
   color: var(--text);
 }
-/* Keeps the search field visible above the results while the list below it scrolls,
-   instead of the typed query scrolling out of view behind the results. */
-#food-search-input {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--bg);
+/* Used by modals with a potentially long, dynamic middle section (e.g. food search results).
+   The title/input/actions stay fixed in place; only the middle section scrolls. This also
+   keeps the search input out of any scrolling container, so iOS's native "scroll focused
+   input into view" behavior has nothing to do and can't cause a jump. */
+.modal-sheet.modal-sheet-scroll {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-sheet.modal-sheet-scroll > h3,
+.modal-sheet.modal-sheet-scroll > input,
+.modal-sheet.modal-sheet-scroll > select,
+.modal-sheet.modal-sheet-scroll > .modal-actions {
+  flex-shrink: 0;
+}
+.modal-scroll-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
 .modal-actions button { flex: 1; }

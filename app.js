@@ -1098,14 +1098,17 @@
 
   /* ================= food search (Open Food Facts) ================= */
   function onAddMeal() {
+    // modal-sheet-scroll: keeps the title/input (and the Abbrechen button) fixed in place,
+    // only the results list in between scrolls - so the search field never moves out of view
+    // and the cancel button is always reachable regardless of how many results come back.
     openModal(`
       <h3>Mahlzeit hinzufügen</h3>
       <input id="food-search-input" type="text" placeholder="z. B. Buttertoast" autocomplete="off" />
-      <div id="food-search-results"></div>
+      <div id="food-search-results" class="modal-scroll-body"></div>
       <div class="modal-actions">
         <button class="ghost-btn" id="modal-cancel">Abbrechen</button>
       </div>
-    `);
+    `, "modal-sheet-scroll");
     $("#modal-cancel").addEventListener("click", closeModal);
     const input = $("#food-search-input");
     let debounceTimer;
@@ -1337,14 +1340,33 @@
   }
 
   /* ================= modal ================= */
-  function openModal(html) {
+  let savedScrollY = 0;
+  function lockBodyScroll() {
+    savedScrollY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${savedScrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+  }
+  function unlockBodyScroll() {
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    window.scrollTo(0, savedScrollY);
+  }
+
+  function openModal(html, sheetClass) {
     const root = $("#modal-root");
-    root.innerHTML = `<div class="modal-backdrop"><div class="modal-sheet">${html}</div></div>`;
+    // Locking the body while the modal is open stops iOS Safari's native "scroll focused
+    // input into view" behavior from jumping/zooming the whole page behind the fixed overlay.
+    lockBodyScroll();
+    root.innerHTML = `<div class="modal-backdrop"><div class="modal-sheet${sheetClass ? " " + sheetClass : ""}">${html}</div></div>`;
     root.querySelector(".modal-backdrop").addEventListener("click", (e) => {
       if (e.target.classList.contains("modal-backdrop")) closeModal();
     });
   }
-  function closeModal() { $("#modal-root").innerHTML = ""; }
+  function closeModal() { $("#modal-root").innerHTML = ""; unlockBodyScroll(); }
 
   function onMenuClick() {
     openModal(`
