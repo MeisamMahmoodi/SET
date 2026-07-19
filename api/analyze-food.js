@@ -12,7 +12,7 @@ Antworte NUR mit validem JSON, exakt in diesem Format:
 {"food_name": "kurzer deutscher Name", "grams": Zahl, "calories": Zahl, "protein": Zahl, "carbs": Zahl, "fat": Zahl, "confidence": "high"|"medium"|"low"}
 Wenn kein Essen erkennbar ist, antworte exakt mit {"error": "no_food_detected"}`;
 
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gemini-flash-latest";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
