@@ -29,7 +29,7 @@ html, body {
 #app {
   max-width: 480px;
   margin: 0 auto;
-  padding: 18px 16px calc(110px + env(safe-area-inset-bottom));
+  padding: calc(18px + env(safe-area-inset-top)) 16px calc(110px + env(safe-area-inset-bottom));
   min-height: 100vh;
 }
 
