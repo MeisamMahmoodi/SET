@@ -460,9 +460,9 @@
     row.dataset.index = index;
     row.innerHTML = `
       <span class="idx">${index + 1}</span>
-      <input class="num weight-input" type="text" inputmode="decimal" placeholder="0" value="${set.weight ?? ""}" aria-label="Gewicht Satz ${index + 1}" />
+      <input class="num weight-input" type="text" inputmode="none" readonly placeholder="0" value="${set.weight ?? ""}" aria-label="Gewicht Satz ${index + 1}" />
       <span class="unit">${ex.bodyweight ? "+kg" : "kg"}</span>
-      <input class="num reps-input" type="text" inputmode="numeric" placeholder="0" value="${set.reps ?? ""}" aria-label="Wiederholungen Satz ${index + 1}" />
+      <input class="num reps-input" type="text" inputmode="none" readonly placeholder="0" value="${set.reps ?? ""}" aria-label="Wiederholungen Satz ${index + 1}" />
       <span class="unit">wdh</span>
       <input class="note note-input" type="text" placeholder="Notiz" value="${set.note ? String(set.note).replace(/"/g, "&quot;") : ""}" aria-label="Notiz Satz ${index + 1}" />
       <button class="mic mic-btn" title="Spracheingabe" aria-label="Spracheingabe">${ICON_MIC}</button>
@@ -488,8 +488,8 @@
   }
 
   function bindExerciseListEvents() {
-    $$(".weight-input").forEach((el) => el.addEventListener("input", onSetInput));
-    $$(".reps-input").forEach((el) => el.addEventListener("input", onSetInput));
+    $$(".weight-input").forEach((el) => el.addEventListener("click", () => openValuePicker(el, "weight")));
+    $$(".reps-input").forEach((el) => el.addEventListener("click", () => openValuePicker(el, "reps")));
     $$(".note-input").forEach((el) => el.addEventListener("input", onSetInput));
     $$(".add-set-btn").forEach((el) => el.addEventListener("click", onAddSet));
     $$(".del-set-btn").forEach((el) => el.addEventListener("click", onDelSet));
@@ -497,6 +497,83 @@
     $$(".mic-btn").forEach((el) => el.addEventListener("click", onMicClick));
     $$(".timer-btn").forEach((el) => el.addEventListener("click", () => startRestTimer(parseInt(el.dataset.timer, 10))));
     $$(".collapse-ex-btn").forEach((el) => el.addEventListener("click", () => { expandedExerciseId = null; renderExerciseList(); }));
+  }
+
+  const ITEM_H = 44;
+  // Weight steps in 0.5s (matches typical gym plate increments incl. bodyweight-assist), reps in
+  // whole numbers. Ranges are generous but bounded so the wheel stays a reasonable DOM size.
+  function pickerValues(field) {
+    if (field === "weight") {
+      const vals = [];
+      for (let v = 0; v <= 250; v += 0.5) vals.push(v);
+      return vals;
+    }
+    const vals = [];
+    for (let v = 0; v <= 60; v += 1) vals.push(v);
+    return vals;
+  }
+  function fmtPickerValue(v, field) {
+    if (field === "reps") return String(v);
+    return Number.isInteger(v) ? String(v) : String(v).replace(".", ",");
+  }
+
+  function openValuePicker(inputEl, field) {
+    const row = inputEl.closest(".set-row");
+    const values = pickerValues(field);
+    const current = parseNum(inputEl.value);
+    const startVal = current !== null ? current : 0;
+    let closestIdx = 0, closestDiff = Infinity;
+    values.forEach((v, i) => { const d = Math.abs(v - startVal); if (d < closestDiff) { closestDiff = d; closestIdx = i; } });
+
+    openModal(`
+      <h3>${field === "weight" ? "Gewicht" : "Wiederholungen"}</h3>
+      <div class="picker-wheel-wrap" id="picker-wrap">
+        <div class="picker-wheel" id="picker-wheel">
+          ${values.map((v) => `<div class="picker-item" data-value="${v}">${fmtPickerValue(v, field)}${field === "weight" ? " kg" : ""}</div>`).join("")}
+        </div>
+        <div class="picker-highlight"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="modal-cancel">Abbrechen</button>
+        <button class="primary-btn" id="modal-save">Fertig</button>
+      </div>
+    `);
+
+    const wheel = $("#picker-wheel");
+    const wrap = $("#picker-wrap");
+    // Padding lets the first/last item scroll all the way to the centered highlight band.
+    const padding = (wrap.clientHeight - ITEM_H) / 2;
+    wheel.style.paddingTop = padding + "px";
+    wheel.style.paddingBottom = padding + "px";
+    wheel.scrollTop = closestIdx * ITEM_H;
+
+    let selectedIdx = closestIdx;
+    function markActive() {
+      $$(".picker-item", wheel).forEach((el, i) => el.classList.toggle("active", i === selectedIdx));
+    }
+    markActive();
+
+    let scrollTimer;
+    wheel.addEventListener("scroll", () => {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        selectedIdx = Math.round(wheel.scrollTop / ITEM_H);
+        selectedIdx = Math.max(0, Math.min(values.length - 1, selectedIdx));
+        markActive();
+      }, 80);
+    });
+
+    $("#modal-cancel").addEventListener("click", closeModal);
+    $("#modal-save").addEventListener("click", () => {
+      inputEl.value = String(values[selectedIdx]).replace(".", ",");
+      closeModal();
+      const exId = row.dataset.exId;
+      const sets = currentSetsInDom(exId);
+      const card = row.closest(".exercise-card");
+      const ex = allExercises().find((x) => x.id === exId);
+      updateOneRM(card, ex, sets);
+      schedulePersist(exId, sets);
+    });
   }
 
   function currentSetsInDom(exId) {
