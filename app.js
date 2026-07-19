@@ -1343,6 +1343,24 @@
   }
 
   /* ================= modal ================= */
+  // `.modal-backdrop` is `position:fixed; inset:0`, which sizes it to the full layout viewport -
+  // on iOS that stays the full screen height even once the keyboard is open, since the keyboard
+  // only shrinks the *visual* viewport. With the sheet bottom-anchored (align-items:flex-end) inside
+  // a backdrop that's taller than what's actually visible, a tall sheet's top portion (title, search
+  // field, first results) ends up rendered above the visible area - looking like everything scrolled
+  // to the bottom. Sizing the backdrop to window.visualViewport keeps it matched to what's actually
+  // on screen, keyboard included, so the sheet (capped at a % of that) always fits entirely in view.
+  function syncModalToVisualViewport() {
+    const backdrop = $(".modal-backdrop");
+    const vv = window.visualViewport;
+    if (!backdrop || !vv) return;
+    backdrop.style.position = "fixed";
+    backdrop.style.left = vv.offsetLeft + "px";
+    backdrop.style.top = vv.offsetTop + "px";
+    backdrop.style.width = vv.width + "px";
+    backdrop.style.height = vv.height + "px";
+  }
+
   let savedScrollY = 0;
   function lockBodyScroll() {
     savedScrollY = window.scrollY || window.pageYOffset || 0;
@@ -1368,8 +1386,20 @@
     root.querySelector(".modal-backdrop").addEventListener("click", (e) => {
       if (e.target.classList.contains("modal-backdrop")) closeModal();
     });
+    syncModalToVisualViewport();
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", syncModalToVisualViewport);
+      window.visualViewport.addEventListener("scroll", syncModalToVisualViewport);
+    }
   }
-  function closeModal() { $("#modal-root").innerHTML = ""; unlockBodyScroll(); }
+  function closeModal() {
+    $("#modal-root").innerHTML = "";
+    unlockBodyScroll();
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener("resize", syncModalToVisualViewport);
+      window.visualViewport.removeEventListener("scroll", syncModalToVisualViewport);
+    }
+  }
 
   function onMenuClick() {
     openModal(`

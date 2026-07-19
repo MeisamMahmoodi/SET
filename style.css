@@ -463,7 +463,9 @@ canvas { display: block; width: 100%; }
   background: var(--bg);
   width: 100%;
   max-width: 480px;
-  max-height: 80vh;
+  /* .modal-backdrop's height is kept in sync with window.visualViewport via JS (see openModal),
+     so this percentage always reflects the space actually visible above an open keyboard. */
+  max-height: 85%;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
