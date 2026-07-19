@@ -1252,13 +1252,14 @@
     // The legacy world.openfoodfacts.org search backend (/api/v2/search, /cgi/search.pl) has been
     // unreliable (intermittent HTTP 503s). search-a-licious is OFF's actively maintained replacement.
     // We query both in parallel and merge results, so a hiccup in either source doesn't break search.
-    // countries_tags_en=Germany asks the server to only return products sold in Germany (imports,
-    // fast-food chains etc. included, as long as they're tagged) - this is a best-effort request param,
-    // the real gate is the client-side isSoldInGermany() filter below.
+    // Dropped the countries_tags_en=Germany request param again: combined with search_terms/q it made
+    // both endpoints fail or come back empty far more often in real-world use than in testing - the
+    // German-market relevance is handled entirely client-side below instead (as a soft preference,
+    // not a hard requirement - see note on isSoldInGermany).
     const attempts = await Promise.allSettled([
-      fetchJsonOrThrow(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&countries_tags_en=Germany&page_size=40`)
+      fetchJsonOrThrow(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&page_size=40`)
         .then((d) => d.hits || d.products || []),
-      fetchJsonOrThrow(`https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&countries_tags_en=Germany&page_size=40&fields=code,product_name,product_name_de,brands,serving_size,serving_quantity,nutriments,countries_tags`)
+      fetchJsonOrThrow(`https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&page_size=40&fields=code,product_name,product_name_de,brands,serving_size,serving_quantity,nutriments,countries_tags`)
         .then((d) => d.products || [])
     ]);
 
@@ -1278,19 +1279,22 @@
       });
     });
 
-    // Hard filter: only real names (no barcode-as-name junk), only Latin script, only products
-    // actually sold in Germany, only entries with usable nutrition data, and only products whose
-    // name/brand actually contains what was typed (see matchesQueryText comment above).
+    // Hard filter: only real names (no barcode-as-name junk), only Latin script, only entries with
+    // usable nutrition data, and only products whose name/brand actually contains what was typed
+    // (see matchesQueryText comment above). isSoldInGermany is NOT a hard requirement here anymore -
+    // OFF's countries_tags coverage turned out to be too incomplete in practice (plenty of genuinely
+    // German products, e.g. ordinary Toastbrot, simply aren't tagged), which made basic searches come
+    // back empty. It's used only to sort Germany-tagged matches first when there's a choice.
     let products = [...byKey.values()]
       .map((p) => ({ ...p, _name: pickFoodName(p) }))
       .filter((p) =>
         p._name &&
         !NON_LATIN_RE.test(p._name) &&
         !ALL_DIGITS_RE.test(p._name) &&
-        isSoldInGermany(p) &&
         hasRealNutrition(p) &&
         matchesQueryText(p, query)
       );
+    products.sort((a, b) => (isSoldInGermany(b) ? 1 : 0) - (isSoldInGermany(a) ? 1 : 0));
 
     if (!products.length) {
       results.innerHTML = `<p class="muted small">Keine Treffer gefunden. Versuch's mit einem anderen Begriff (z. B. Markenname).</p>`;
