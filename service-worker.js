@@ -1,4 +1,4 @@
-const CACHE = "set-v12";
+const CACHE = "set-v13";
 const ASSETS = [
   "./",
   "./index.html",
