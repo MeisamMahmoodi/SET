@@ -8,9 +8,9 @@ const SYSTEM_PROMPT = `Du bist ein Ernährungs-Schätzer für eine Fitness-App. 
 oder eine kurze Textbeschreibung einer Mahlzeit.
 Schätze realistisch die Portionsgröße und die Makronährstoffe insgesamt (wenn mehrere
 Speisen genannt/zu sehen sind, fasse sie zu einer Gesamtschätzung zusammen, z. B. "Teller mit Nudeln und Hähnchen").
-Antworte NUR mit validem JSON, exakt in diesem Format:
-{"food_name": "kurzer deutscher Name", "grams": Zahl, "calories": Zahl, "protein": Zahl, "carbs": Zahl, "fat": Zahl, "confidence": "high"|"medium"|"low"}
-Wenn kein Essen erkennbar ist, antworte exakt mit {"error": "no_food_detected"}`;
+Fülle IMMER alle Felder aus (food_name, grams, calories, protein, carbs, fat, confidence) - niemals leer lassen oder weglassen.
+Prüfe deine Zahlen auf Plausibilität, bevor du antwortest (z. B. 2 Eier ≈ 12-14 g Protein, nicht 140 g - Größenordnung zählt).
+Wenn kein Essen erkennbar ist, setze food_name auf "Kein Essen erkannt", alle Zahlenwerte auf 0 und confidence auf "low".`;
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
@@ -21,9 +21,10 @@ const RESPONSE_SCHEMA = {
     protein: { type: "INTEGER" },
     carbs: { type: "INTEGER" },
     fat: { type: "INTEGER" },
-    confidence: { type: "STRING", enum: ["high", "medium", "low"] },
-    error: { type: "STRING" }
-  }
+    confidence: { type: "STRING", enum: ["high", "medium", "low"] }
+  },
+  required: ["food_name", "grams", "calories", "protein", "carbs", "fat", "confidence"],
+  propertyOrdering: ["food_name", "grams", "calories", "protein", "carbs", "fat", "confidence"]
 };
 
 const MODEL = "gemini-flash-latest";
@@ -108,6 +109,11 @@ export default async function handler(req, res) {
 
     if (!parsed) {
       res.status(502).json({ error: "unparseable_ai_response", detail: textOut.slice(0, 500) });
+      return;
+    }
+
+    if (!parsed.grams && !parsed.calories) {
+      res.status(200).json({ error: "no_food_detected" });
       return;
     }
 
