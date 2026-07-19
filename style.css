@@ -491,6 +491,10 @@ canvas { display: block; width: 100%; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Force (not just cap) the height, so the results list below actually expands to fill all
+     available space above the keyboard instead of the sheet shrink-wrapping to its content and
+     leaving blank space underneath before the keyboard starts. */
+  height: 85%;
 }
 .modal-sheet.modal-sheet-scroll > h3,
 .modal-sheet.modal-sheet-scroll > input,
