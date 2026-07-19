@@ -1142,6 +1142,21 @@
       .some((k) => Number(n[k]) > 0);
   }
 
+  function normalizeSearchText(s) {
+    return (s || "").toLowerCase()
+      .replace(/ä/g, "a").replace(/ö/g, "o").replace(/ü/g, "u").replace(/ß/g, "ss").trim();
+  }
+
+  // The OFF search_terms/q params turned out to not reliably filter by the typed text once combined
+  // with other filter params (in practice: unrelated "popular in Germany" products came back for any
+  // query). We can't trust the backend's relevance here, so we do the actual text match ourselves -
+  // every word typed must appear somewhere in the product's name or brand.
+  function matchesQueryText(p, query) {
+    const haystack = normalizeSearchText(p._name + " " + (p.brands || ""));
+    const words = normalizeSearchText(query).split(/\s+/).filter(Boolean);
+    return words.every((w) => haystack.includes(w));
+  }
+
   async function fetchJsonOrThrow(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -1183,7 +1198,8 @@
     });
 
     // Hard filter: only real names (no barcode-as-name junk), only Latin script, only products
-    // actually sold in Germany, and only entries that carry usable nutrition data.
+    // actually sold in Germany, only entries with usable nutrition data, and only products whose
+    // name/brand actually contains what was typed (see matchesQueryText comment above).
     let products = [...byKey.values()]
       .map((p) => ({ ...p, _name: pickFoodName(p) }))
       .filter((p) =>
@@ -1191,11 +1207,12 @@
         !NON_LATIN_RE.test(p._name) &&
         !ALL_DIGITS_RE.test(p._name) &&
         isSoldInGermany(p) &&
-        hasRealNutrition(p)
+        hasRealNutrition(p) &&
+        matchesQueryText(p, query)
       );
 
     if (!products.length) {
-      results.innerHTML = `<p class="muted small">Keine Treffer für den deutschen Markt gefunden. Versuch's mit einem anderen Begriff (z. B. Markenname).</p>`;
+      results.innerHTML = `<p class="muted small">Keine Treffer gefunden. Versuch's mit einem anderen Begriff (z. B. Markenname).</p>`;
       return;
     }
 
