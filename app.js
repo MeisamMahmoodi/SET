@@ -28,6 +28,13 @@
   let expandedExerciseId = null;
   let dashboardTab = "trend";
   let nutritionDetailMacro = null;
+  let nutritionSelectedDate = null; // set to today when entering the Ernährung tab; date-strip can move it into the past
+
+  const ICON_FLAME = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c2.2 3 4 5.4 4 9a4 4 0 01-8 0c0-1.1.5-2 1-3 .5 1 1.4 1.6 2 1 .6-.6.1-1.6-1-3 .6-1.2 1.3-2.6 2-4z"/></svg>`;
+  const ICON_PROTEIN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 5a3 3 0 013 3c0 2-1.5 3.5-3 5-1.5 1.5-3.5 3-5.5 3a3 3 0 01-3-3c0-2 1.5-3.5 3-5 1.5-1.5 3.5-3 5.5-3z"/><path d="M8.5 15.5L5 19"/></svg>`;
+  const ICON_CARBS = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21C7 21 3 17 3 11c0-4 3-7 7-7 1 3 3 5 6 6 2 4 0 8-4 11z"/><path d="M9 14c1.5-1.5 3-2.3 5.5-3.2"/></svg>`;
+  const ICON_FAT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3 4 6 8 6 12a6 6 0 01-12 0c0-4 3-8 6-12z"/></svg>`;
+  const ICON_MEAL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v7a2 2 0 0 0 2 2v9M7 3v9M9.5 3v9M16 3c-1.5 0-2.5 1.8-2.5 5s1 5 2.5 5v9"/></svg>`;
 
   const MACRO_CONFIG = {
     protein: { label: "Protein", unit: "g", goalKey: "proteinGoal", showQuickAdd: true },
@@ -891,18 +898,19 @@
   }
 
   /* ================= nutrition ================= */
-  function todayProteinEntry() {
-    let day = state.protein.find((p) => p.date === todayStr());
-    if (!day) { day = { date: todayStr(), entries: [] }; state.protein.push(day); }
+  function proteinEntryForDate(d) {
+    let day = state.protein.find((p) => p.date === d);
+    if (!day) { day = { date: d, entries: [] }; state.protein.push(day); }
     return day;
   }
 
-  function drawRing(canvas, current, goal) {
-    // fixed 72x72 CSS size, scaled for device pixel ratio so it stays crisp —
+  function drawRing(canvas, current, goal, size) {
+    // size defaults to 72 (the per-macro detail screen's original fixed size) so existing callers
+    // are unaffected; the overview's hero (96) and mini macro rings (56) pass their own size.
     // canvas.width/height are set explicitly every time (never read back), so this can't runaway like the line charts once did
+    size = size || 72;
     const ctx = canvas.getContext("2d");
     const dpr = window.devicePixelRatio || 1;
-    const size = 72;
     canvas.width = size * dpr;
     canvas.height = size * dpr;
     canvas.style.width = size + "px";
@@ -910,15 +918,17 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
     const pct = goal ? Math.max(0, Math.min(1, current / goal)) : 0;
+    const lineWidth = size <= 60 ? 5 : 7;
+    const radius = size / 2 - lineWidth;
     ctx.strokeStyle = "#f2f2f0";
-    ctx.lineWidth = 6;
+    ctx.lineWidth = lineWidth;
     ctx.beginPath();
-    ctx.arc(size / 2, size / 2, 28, 0, Math.PI * 2);
+    ctx.arc(size / 2, size / 2, radius, 0, Math.PI * 2);
     ctx.stroke();
     ctx.strokeStyle = "#111111";
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.arc(size / 2, size / 2, 28, -Math.PI / 2, -Math.PI / 2 + pct * Math.PI * 2);
+    ctx.arc(size / 2, size / 2, radius, -Math.PI / 2, -Math.PI / 2 + pct * Math.PI * 2);
     ctx.stroke();
   }
 
@@ -952,6 +962,19 @@
     return rows.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
   }
 
+  // Every macro at once, for the overview's "Kürzlich geloggt" list - unlike macroEntriesForDate this
+  // isn't scoped to one macro. Quick-add protein entries only ever have a protein value (calories/
+  // carbs/fat stay null), full meal entries carry all four.
+  function entriesForDateAllMacros(d) {
+    const rows = [];
+    state.nutrition.filter((n) => n.date === d).forEach((n) => {
+      rows.push({ id: n.id, time: n.time, label: n.foodName, calories: n.calories, protein: n.protein, carbs: n.carbs, fat: n.fat, source: "nutrition" });
+    });
+    const day = state.protein.find((p) => p.date === d);
+    if (day) day.entries.forEach((e) => rows.push({ id: e.id, time: e.time, label: "Eiweiß", calories: null, protein: e.amount, carbs: null, fat: null, source: "protein" }));
+    return rows.sort((a, b) => (b.time || "").localeCompare(a.time || "")); // most recent first
+  }
+
   function macroHistoryLast14(macro) {
     const out = [];
     for (let i = 13; i >= 0; i--) {
@@ -968,8 +991,9 @@
     if (row.source === "protein") {
       const { error } = await sb.from("protein_entries").delete().eq("id", row.id);
       if (error) { showError(error.message); return; }
-      const day = state.protein.find((p) => p.date === todayStr());
-      if (day) day.entries = day.entries.filter((e) => e.id !== row.id);
+      // Search every day's bucket (not just today's) - the entry being deleted can belong to
+      // whatever date was selected in the date-strip, not necessarily today.
+      state.protein.forEach((day) => { day.entries = day.entries.filter((e) => e.id !== row.id); });
     } else {
       const { error } = await sb.from("nutrition_entries").delete().eq("id", row.id);
       if (error) { showError(error.message); return; }
@@ -1020,34 +1044,90 @@
   function openMacroDetail(macro) { nutritionDetailMacro = macro; renderNutrition(); }
   function closeMacroDetail() { nutritionDetailMacro = null; renderNutrition(); }
 
+  function buildDateStrip() {
+    const strip = $("#nutrition-date-strip");
+    if (!strip) return;
+    strip.innerHTML = "";
+    for (let i = 6; i >= 0; i--) {
+      const d = daysAgoStr(i);
+      const dateObj = new Date(d + "T00:00:00");
+      const weekday = dateObj.toLocaleDateString("de-DE", { weekday: "short" }).replace(".", "");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "date-strip-day" + (d === nutritionSelectedDate ? " active" : "");
+      btn.dataset.date = d;
+      btn.innerHTML = `<span class="dsd-weekday">${weekday}</span><span class="dsd-num">${dateObj.getDate()}</span>`;
+      btn.addEventListener("click", () => {
+        nutritionSelectedDate = d;
+        renderNutritionOverview();
+      });
+      strip.appendChild(btn);
+    }
+  }
+
+  function renderRecentList(d) {
+    const list = $("#nutrition-recent-list");
+    if (!list) return;
+    const rows = entriesForDateAllMacros(d);
+    if (!rows.length) {
+      list.innerHTML = `<p class="muted small" style="padding:4px 2px;">Noch nichts geloggt für diesen Tag.</p>`;
+      return;
+    }
+    list.innerHTML = "";
+    rows.forEach((row) => {
+      const macroChips = [];
+      if (row.protein !== null && row.protein !== undefined) macroChips.push(`<span>${ICON_PROTEIN}${fmtWeight(row.protein)}g</span>`);
+      if (row.carbs !== null && row.carbs !== undefined) macroChips.push(`<span>${ICON_CARBS}${fmtWeight(row.carbs)}g</span>`);
+      if (row.fat !== null && row.fat !== undefined) macroChips.push(`<span>${ICON_FAT}${fmtWeight(row.fat)}g</span>`);
+      const el = document.createElement("div");
+      el.className = "recent-row";
+      el.innerHTML = `
+        <div class="recent-icon">${ICON_MEAL}</div>
+        <div class="recent-main">
+          <div class="recent-top-line"><span class="recent-name">${row.label}</span><span class="recent-time">${row.time || ""}</span></div>
+          ${row.calories !== null && row.calories !== undefined ? `<div class="recent-cal">${ICON_FLAME}${Math.round(row.calories)} kcal</div>` : ""}
+          ${macroChips.length ? `<div class="recent-macros">${macroChips.join("")}</div>` : ""}
+        </div>
+        <button class="icon-btn recent-delete" aria-label="Eintrag löschen">×</button>
+      `;
+      el.querySelector(".recent-delete").addEventListener("click", () => deleteMacroEntry(row));
+      list.appendChild(el);
+    });
+  }
+
   function renderNutritionOverview() {
-    const d = todayStr();
+    if (!nutritionSelectedDate) nutritionSelectedDate = todayStr();
+    const d = nutritionSelectedDate;
+    buildDateStrip();
+
     const kcal = macroValueForDate("calories", d);
     const protein = macroValueForDate("protein", d);
     const carbs = macroValueForDate("carbs", d);
     const fat = macroValueForDate("fat", d);
     const kcalGoal = state.settings.calorieGoal;
+    const proteinGoal = state.settings.proteinGoal;
+    const carbsGoal = state.settings.carbsGoal;
+    const fatGoal = state.settings.fatGoal;
 
-    $("#calorie-hero-label").textContent = `${Math.round(kcal)} / ${Math.round(kcalGoal)} kcal`;
-    const bar = $("#calorie-bar");
-    bar.innerHTML = "";
-    const segs = 4;
-    const pct = kcalGoal ? Math.min(1, kcal / kcalGoal) : 0;
-    const filledSegs = Math.round(pct * segs);
-    for (let i = 0; i < segs; i++) {
-      const seg = document.createElement("span");
-      seg.className = "progress-seg" + (i < filledSegs ? " filled" : "");
-      bar.appendChild(seg);
-    }
+    $("#calorie-remaining-num").textContent = Math.max(0, Math.round(kcalGoal - kcal));
+    drawRing($("#calorie-ring"), kcal, kcalGoal, 96);
+    $("#ring-icon-calories").innerHTML = ICON_FLAME;
 
-    $("#macro-protein-current").textContent = Math.round(protein);
-    $("#macro-protein-goal").textContent = Math.round(state.settings.proteinGoal);
-    $("#macro-carbs-current").textContent = Math.round(carbs);
-    $("#macro-carbs-goal").textContent = Math.round(state.settings.carbsGoal);
-    $("#macro-fat-current").textContent = Math.round(fat);
-    $("#macro-fat-goal").textContent = Math.round(state.settings.fatGoal);
+    $("#macro-protein-remaining").textContent = Math.max(0, Math.round(proteinGoal - protein));
+    drawRing($("#macro-protein-ring"), protein, proteinGoal, 56);
+    $("#ring-icon-protein").innerHTML = ICON_PROTEIN;
+
+    $("#macro-carbs-remaining").textContent = Math.max(0, Math.round(carbsGoal - carbs));
+    drawRing($("#macro-carbs-ring"), carbs, carbsGoal, 56);
+    $("#ring-icon-carbs").innerHTML = ICON_CARBS;
+
+    $("#macro-fat-remaining").textContent = Math.max(0, Math.round(fatGoal - fat));
+    drawRing($("#macro-fat-ring"), fat, fatGoal, 56);
+    $("#ring-icon-fat").innerHTML = ICON_FAT;
 
     $("#nutrition-analysis-text").textContent = buildNutritionAnalysisText();
+
+    renderRecentList(d);
   }
 
   function renderMacroDetail(macro) {
@@ -1085,13 +1165,14 @@
   }
 
   async function addProtein(amount) {
+    const date = nutritionSelectedDate || todayStr();
     const now = new Date();
     const time = now.toTimeString().slice(0, 5);
     const { data, error } = await sb.from("protein_entries")
-      .insert({ user_id: currentUser.id, date: todayStr(), amount, entry_time: time })
+      .insert({ user_id: currentUser.id, date, amount, entry_time: time })
       .select().single();
     if (error) { showError(error.message); return; }
-    const day = todayProteinEntry();
+    const day = proteinEntryForDate(date);
     day.entries.push({ id: data.id, amount: Number(data.amount), time: data.entry_time });
     renderNutrition();
   }
@@ -1348,7 +1429,7 @@
       const factor = grams / 100;
       const payload = {
         user_id: currentUser.id,
-        date: todayStr(),
+        date: nutritionSelectedDate || todayStr(),
         food_name: product.product_name,
         brand: product.brands || null,
         quantity: finalQty,
@@ -1591,7 +1672,7 @@
     if (VIEW_TITLES[view]) $("#page-title").textContent = VIEW_TITLES[view];
     if (view === "workout") renderExerciseList();
     if (view === "dashboard") renderDashboard();
-    if (view === "protein") { nutritionDetailMacro = null; renderNutrition(); }
+    if (view === "protein") { nutritionDetailMacro = null; nutritionSelectedDate = todayStr(); renderNutrition(); }
     if (view === "weight") renderWeight();
   }
 
@@ -1642,8 +1723,16 @@
       const expanded = list.classList.toggle("hidden") === false;
       $("#nutrition-log-toggle-arrow").textContent = expanded ? "ausblenden ‹" : "anzeigen ›";
     });
-    $$(".macro-block").forEach((el) => el.addEventListener("click", () => openMacroDetail(el.dataset.macro)));
-    $("#calorie-hero-card").addEventListener("click", () => openMacroDetail("calories"));
+    // The per-macro drill-down only ever shows "today" data, so block it while the date-strip has a
+    // past day selected - avoids showing a "heute"-labeled screen while browsing an earlier date.
+    $$(".macro-block").forEach((el) => el.addEventListener("click", () => {
+      if (nutritionSelectedDate && nutritionSelectedDate !== todayStr()) return;
+      openMacroDetail(el.dataset.macro);
+    }));
+    $("#calorie-hero-card").addEventListener("click", () => {
+      if (nutritionSelectedDate && nutritionSelectedDate !== todayStr()) return;
+      openMacroDetail("calories");
+    });
     $("#nutrition-back-btn").addEventListener("click", closeMacroDetail);
     $("#add-meal-btn").addEventListener("click", onAddMeal);
 

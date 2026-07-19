@@ -102,24 +102,43 @@
 
   <main id="view-protein" class="view hidden">
     <div id="nutrition-overview">
-      <p class="section-label">Kalorien heute</p>
-      <div class="card workout-progress-card nutrition-hero" id="calorie-hero-card">
-        <p class="wp-label" id="calorie-hero-label">0 / 2200 kcal</p>
-        <div class="wp-bar" id="calorie-bar"></div>
+      <div class="date-strip" id="nutrition-date-strip"></div>
+
+      <div class="card calorie-ring-card" id="calorie-hero-card">
+        <div>
+          <p class="hero-num" id="calorie-remaining-num">0</p>
+          <p class="muted small">kcal übrig</p>
+        </div>
+        <div class="ring-wrap ring-wrap-lg">
+          <canvas id="calorie-ring" width="96" height="96"></canvas>
+          <span class="ring-icon" id="ring-icon-calories"></span>
+        </div>
       </div>
 
       <div class="macro-grid">
         <div class="card macro-block" data-macro="protein">
-          <p class="stat-head">Protein</p>
-          <p class="macro-num"><span id="macro-protein-current">0</span><span class="muted small">/<span id="macro-protein-goal">150</span>g</span></p>
+          <p class="macro-ring-num"><span id="macro-protein-remaining">0</span>g</p>
+          <p class="muted small">Protein übrig</p>
+          <div class="ring-wrap ring-wrap-sm">
+            <canvas id="macro-protein-ring" width="56" height="56"></canvas>
+            <span class="ring-icon" id="ring-icon-protein"></span>
+          </div>
         </div>
         <div class="card macro-block" data-macro="carbs">
-          <p class="stat-head">Carbs</p>
-          <p class="macro-num"><span id="macro-carbs-current">0</span><span class="muted small">/<span id="macro-carbs-goal">250</span>g</span></p>
+          <p class="macro-ring-num"><span id="macro-carbs-remaining">0</span>g</p>
+          <p class="muted small">Carbs übrig</p>
+          <div class="ring-wrap ring-wrap-sm">
+            <canvas id="macro-carbs-ring" width="56" height="56"></canvas>
+            <span class="ring-icon" id="ring-icon-carbs"></span>
+          </div>
         </div>
         <div class="card macro-block" data-macro="fat">
-          <p class="stat-head">Fett</p>
-          <p class="macro-num"><span id="macro-fat-current">0</span><span class="muted small">/<span id="macro-fat-goal">70</span>g</span></p>
+          <p class="macro-ring-num"><span id="macro-fat-remaining">0</span>g</p>
+          <p class="muted small">Fett übrig</p>
+          <div class="ring-wrap ring-wrap-sm">
+            <canvas id="macro-fat-ring" width="56" height="56"></canvas>
+            <span class="ring-icon" id="ring-icon-fat"></span>
+          </div>
         </div>
       </div>
 
@@ -129,6 +148,9 @@
         <div class="live-dot"><span></span>Analyse läuft</div>
         <p id="nutrition-analysis-text">Sammle noch Daten …</p>
       </div>
+
+      <p class="section-label">Kürzlich geloggt</p>
+      <div id="nutrition-recent-list"></div>
     </div>
 
     <div id="nutrition-detail" class="hidden">
