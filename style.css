@@ -1,4 +1,7 @@
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* touch-action:manipulation removes the double-tap-to-zoom gesture (and the ~300ms tap delay)
+   on every element; combined with the viewport meta's user-scalable=no this stops accidental
+   zooming from double-taps or pinch gestures anywhere in the app. */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
 :root {
   --bg: #ffffff;
@@ -227,12 +230,12 @@ html, body {
 }
 .set-row .idx { width: 16px; font-size: 11.5px; color: var(--text-muted); }
 .set-row input.num {
-  width: 46px;
+  width: 52px;
   border: none;
   background: var(--inset);
   border-radius: var(--radius-sm);
-  padding: 8px 4px;
-  font-size: 13px;
+  padding: 8px 2px;
+  font-size: 16px; /* iOS zooms the whole page in on focus if an input's font-size is below 16px */
   text-align: center;
   color: var(--text);
 }
@@ -243,7 +246,7 @@ html, body {
   background: var(--inset);
   border-radius: var(--radius-sm);
   padding: 8px 8px;
-  font-size: 12.5px;
+  font-size: 16px; /* iOS zooms the whole page in on focus if an input's font-size is below 16px */
   color: var(--text);
 }
 .set-row .unit { font-size: 11px; color: var(--text-muted); }
@@ -391,20 +394,28 @@ select {
   border: none;
   background: var(--inset);
   color: var(--text);
-  font-size: 13px;
+  font-size: 16px; /* iOS zooms the whole page in on focus if an input's font-size is below 16px */
   margin-bottom: 10px;
 }
 
 canvas { display: block; width: 100%; }
+#weight-input {
+  border: none;
+  background: var(--inset);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 16px; /* iOS zooms the whole page in on focus if an input's font-size is below 16px */
+}
 #nutrition-ring { width: 72px; height: 72px; flex-shrink: 0; }
 
 .hero-chart-card { padding-bottom: 6px; }
 .hero-select {
   width: auto;
   display: inline-block;
-  padding: 6px 12px;
+  padding: 5px 12px;
   margin-bottom: 12px;
-  font-size: 12px;
+  font-size: 16px; /* iOS zooms the whole page in on focus if an input's font-size is below 16px */
   font-weight: 500;
   background: var(--inset);
   border-radius: 20px;

@@ -466,7 +466,7 @@
       <span class="unit">wdh</span>
       <input class="note note-input" type="text" placeholder="Notiz" value="${set.note ? String(set.note).replace(/"/g, "&quot;") : ""}" aria-label="Notiz Satz ${index + 1}" />
       <button class="mic mic-btn" title="Spracheingabe" aria-label="Spracheingabe">${ICON_MIC}</button>
-      ${total > 1 ? `<button class="del del-set-btn" title="Satz löschen" aria-label="Satz löschen">×</button>` : ""}
+      <button class="del del-set-btn" title="Satz löschen" aria-label="Satz löschen">×</button>
     `;
     return row;
   }
