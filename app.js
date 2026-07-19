@@ -1118,7 +1118,10 @@
       if (q.length < 2) { $("#food-search-results").innerHTML = ""; return; }
       debounceTimer = setTimeout(() => searchFoods(q), 400);
     });
-    input.focus();
+    // { preventScroll: true } stops the browser from scrolling/panning the page to bring the
+    // input into view when the keyboard opens - that auto-scroll is the "jumps down" animation.
+    // Also deferred a frame so the modal has actually painted before the keyboard opens.
+    requestAnimationFrame(() => input.focus({ preventScroll: true }));
   }
 
   // Matches Cyrillic / Arabic / CJK characters so results in the wrong script get filtered out.
