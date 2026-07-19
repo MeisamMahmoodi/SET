@@ -16,11 +16,11 @@ const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
     food_name: { type: "STRING" },
-    grams: { type: "NUMBER" },
-    calories: { type: "NUMBER" },
-    protein: { type: "NUMBER" },
-    carbs: { type: "NUMBER" },
-    fat: { type: "NUMBER" },
+    grams: { type: "INTEGER" },
+    calories: { type: "INTEGER" },
+    protein: { type: "INTEGER" },
+    carbs: { type: "INTEGER" },
+    fat: { type: "INTEGER" },
     confidence: { type: "STRING", enum: ["high", "medium", "low"] },
     error: { type: "STRING" }
   }
@@ -67,7 +67,7 @@ export default async function handler(req, res) {
           generationConfig: {
             responseMimeType: "application/json",
             responseSchema: RESPONSE_SCHEMA,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 2048,
             thinkingConfig: { thinkingBudget: 0 }
           }
         })
