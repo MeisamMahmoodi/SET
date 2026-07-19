@@ -27,7 +27,7 @@ const RESPONSE_SCHEMA = {
   propertyOrdering: ["food_name", "grams", "calories", "protein", "carbs", "fat", "confidence"]
 };
 
-const MODEL = "gemini-flash-latest";
+const MODEL = "gemini-3.1-flash-lite";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
